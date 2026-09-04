@@ -53,6 +53,16 @@
         </xpath>
     </template>
 
+    <!-- 6b. Leyenda legal visible — solo Finanzas & Capital (antes del CTA) -->
+    <template id="chart_product_legal_note" inherit_id="website_sale.product" name="Product — Legal Note (Finanzas)">
+        <xpath expr="//div[hasclass('o_wsale_product_details_content_section_cta')]" position="before">
+            <div t-if="'Finanzas' in product.name or 'Capital' in product.name" class="chart-product-legal" role="note">
+                <i class="fa fa-info-circle me-2" role="img" aria-label="información"/>
+                Servicio de consultoría y análisis financiero. No constituye asesoría de inversión regulada ni garantiza rendimientos.
+            </div>
+        </xpath>
+    </template>
+
     <!-- 6. Banner de confianza — después del bloque CTA nativo -->
     <template id="chart_product_trust_banner" inherit_id="website_sale.product" name="Product — Trust Banner">
         <xpath expr="//div[hasclass('o_wsale_product_details_content_section_cta')]" position="after">

@@ -1,6 +1,6 @@
 {
     'name': 'Grupo Chart — Websales & Conversión E-commerce',
-    'version': '19.0.1.0.0',
+    'version': '19.0.1.1.0',
     'category': 'Website/eCommerce',
     'author': 'Grupo Chart',
     'website': 'https://chart.lat',
@@ -25,6 +25,7 @@ Módulo especializado en la experiencia de e-commerce del Grupo Chart:
     'data': [
         'data/product_tags_data.xml',
         'data/products_data.xml',
+        'data/product_images.xml',
         'views/shop_inherit_views.xml',
         'views/product_page_inherit_views.xml',
         'views/snippet_category_inherit.xml',
@@ -34,7 +35,6 @@ Módulo especializado en la experiencia de e-commerce del Grupo Chart:
     'assets': {
         'web.assets_frontend': [
             'chart_websales/static/src/scss/chart_websales.scss',
-            'chart_websales/static/src/js/chart_websales.js',
         ],
     },
     'post_init_hook': 'post_init_hook',

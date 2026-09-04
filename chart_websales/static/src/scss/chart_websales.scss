@@ -39,6 +39,14 @@ $chart-radius: 12px;
     margin-bottom: .75rem;
 }
 
+// ---- Ficha de producto: imagen principal ----
+// Solo pulido visual (radio de borde) sobre la imagen; NUNCA se toca el
+// layout nativo de columnas de la ficha (imagen izquierda en escritorio,
+// arriba en móvil lo resuelve el grid nativo de Odoo).
+.o_wsale_product_page .o_wsale_product_images img {
+    border-radius: $chart-radius;
+}
+
 // ---- Ficha de producto: bloques extras ----
 .chart-product-block {
     background: #f7f9fc;
@@ -240,21 +248,17 @@ $chart-radius: 12px;
     font-weight: 700;
 }
 
-// ---- Animación on-scroll (activada por chart_websales.js) ----
-.chart-reveal {
-    opacity: 0;
-    transform: translateY(24px);
-    transition: opacity .6s ease, transform .6s ease;
-}
-
-.chart-reveal.chart-in {
-    opacity: 1;
-    transform: none;
-}
-
-// ---- Highlight de variante seleccionada ----
-.chart-variant-picked {
-    outline: 2px solid $chart-gold;
-    outline-offset: 2px;
+// ---- Ficha de producto: leyenda legal (Finanzas & Capital) ----
+.chart-product-legal {
+    background: rgba(201, 162, 75, .08);
+    border-left: 4px solid $chart-gold;
     border-radius: 8px;
+    padding: .75rem 1rem;
+    font-size: .85rem;
+    color: #2c3a52;
+    margin-top: 1rem;
+
+    .fa-info-circle {
+        color: $chart-gold;
+    }
 }

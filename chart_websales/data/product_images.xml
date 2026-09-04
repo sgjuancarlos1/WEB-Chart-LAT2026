@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============================================================
+         IMÁGENES REALES DE PRODUCTO (image_1920, campo de image.mixin).
+         noupdate="0" a propósito: se reaplica en cada actualización del
+         módulo para garantizar que las fotos reales permanezcan asignadas.
+         Carga binaria estándar: type="base64" + file="..." desde static/.
+         ============================================================ -->
+    <data noupdate="0">
+
+        <record id="product_erp360" model="product.template">
+            <field name="image_1920" type="base64" file="chart_websales/static/src/img/products/chart_erp360_hero.png"/>
+        </record>
+
+        <record id="product_linda" model="product.template">
+            <field name="image_1920" type="base64" file="chart_websales/static/src/img/products/chart_linda_hero.png"/>
+        </record>
+
+        <record id="product_seo" model="product.template">
+            <field name="image_1920" type="base64" file="chart_websales/static/src/img/products/chart_seo_hero.png"/>
+        </record>
+
+        <record id="product_finanzas" model="product.template">
+            <field name="image_1920" type="base64" file="chart_websales/static/src/img/products/chart_finanzas_hero.png"/>
+        </record>
+
+    </data>
+</odoo>

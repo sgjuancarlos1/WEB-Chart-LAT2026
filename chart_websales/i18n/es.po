@@ -50,21 +50,17 @@ msgid "Nuevo"
 msgstr "Nuevo"
 
 #. module: chart_websales
-#: model:product.public.category,chart_tagline
 msgid "ERP Odoo, AWS, soporte y procesos: tu operación en orden."
 msgstr "ERP Odoo, AWS, soporte y procesos: tu operación en orden."
 
 #. module: chart_websales
-#: model:product.public.category,chart_tagline
 msgid "Agentes de IA que automatizan y deciden con tus datos."
 msgstr "Agentes de IA que automatizan y deciden con tus datos."
 
 #. module: chart_websales
-#: model:product.public.category,chart_tagline
 msgid "Tráfico, tienda en línea y conversión que sí se mide."
 msgstr "Tráfico, tienda en línea y conversión que sí se mide."
 
 #. module: chart_websales
-#: model:product.public.category,chart_tagline
 msgid "Trading, bonos y mercado global con analítica clara."
 msgstr "Trading, bonos y mercado global con analítica clara."

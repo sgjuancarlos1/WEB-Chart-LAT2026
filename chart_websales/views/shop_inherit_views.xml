@@ -4,6 +4,11 @@
     <!-- ============================================================
          HERENCIA 1: Listado de tienda (website_sale.products)
          - Franja de confianza sobre el grid (sin tocar nada).
+           IMPORTANTE: se inserta ANTES de div.row.o_wsale_products_main_row
+           (hermana del row, flujo normal de bloques). NUNCA dentro de
+           #products_grid ni como hijo del row: #products_grid es un hijo
+           flex del row "flex-nowrap" y cualquier nodo extra ahí se estira
+           verticalmente y aplasta el grid (bug del rectángulo azul).
          - Las tarjetas se estilizan por CSS usando sus clases nativas
            (o_wsale_products_page / oe_product_cart / o_wsale_product_grid_wrapper);
            el xpath hasclass('oe_product') no es viable porque esa clase
@@ -12,9 +17,9 @@
            mecanismo nativo de ribbons (products_item + product.ribbon).
          ============================================================ -->
     <template id="chart_shop_products" inherit_id="website_sale.products" name="Shop — Chart Trust Bar">
-        <xpath expr="//div[@id='products_grid']" position="before">
+        <xpath expr="//div[hasclass('o_wsale_products_main_row')]" position="before">
             <div class="chart-shop-trust-bar">
-                <div class="container d-flex flex-wrap align-items-center justify-content-center gap-2">
+                <div class="d-flex flex-wrap align-items-center justify-content-center gap-2">
                     <span><i class="fa fa-check-circle me-1" role="img" aria-label="check"/> Diagnóstico gratuito antes de contratar</span>
                     <span class="d-none d-md-inline text-muted">·</span>
                     <span><i class="fa fa-clock-o me-1" role="img" aria-label="clock"/> Respuesta en 24 hrs</span>
