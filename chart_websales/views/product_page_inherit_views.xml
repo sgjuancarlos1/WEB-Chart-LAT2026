@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================
+         HERENCIA 2: Ficha de producto individual (website_sale.product)
+         Orden (FASE 3): precio/variantes (nativo) →
+         3. "¿Qué incluye?" (bullets desde description_sale, por líneas)
+         4. "Ideal para ti si..." (3 bullets de buyer persona por producto)
+         6. Banner de confianza + CTA a /contactus (después del CTA nativo)
+         Cross-sell: nativo (alternative_products) más abajo en la página.
+
+         Nota técnica: el bloque de atributos/variantes usa t-attf-class
+         (hasclass no lo lee), por lo que el ancla estable es el nodo
+         <t name="variant_info"> del propio template core.
+         ============================================================ -->
+
+    <!-- 3 + 4. ¿Qué incluye? e Ideal para ti si... — tras el selector de variantes -->
+    <template id="chart_product_includes" inherit_id="website_sale.product" name="Product — Includes &amp; Buyer Persona">
+        <xpath expr="//t[@name='variant_info']" position="after">
+            <section class="chart-product-block chart-includes">
+                <h3>¿Qué incluye?</h3>
+                <ul class="chart-check-list">
+                    <t t-foreach="(product.description_sale or '').splitlines()" t-as="line">
+                        <li t-if="line.strip()"><i class="fa fa-check-circle-o me-2" role="img" aria-label="incluye"/> <t t-out="line.strip()"/></li>
+                    </t>
+                </ul>
+            </section>
+            <section class="chart-product-block chart-buyer-persona">
+                <h3>Ideal para ti si...</h3>
+                <ul class="chart-check-list">
+                    <t t-if="'ERP 360' in product.name">
+                        <li><i class="fa fa-check-circle-o me-2" role="img" aria-label="ok"/> Facturas más de 50 documentos al mes</li>
+                        <li><i class="fa fa-check-circle-o me-2" role="img" aria-label="ok"/> Tienes más de 1 sucursal o almacén</li>
+                        <li><i class="fa fa-check-circle-o me-2" role="img" aria-label="ok"/> Quieres dejar de usar Excel para tu contabilidad</li>
+                    </t>
+                    <t t-elif="'LINDA' in product.name">
+                        <li><i class="fa fa-check-circle-o me-2" role="img" aria-label="ok"/> Recibes cientos de correos y documentos que clasificar</li>
+                        <li><i class="fa fa-check-circle-o me-2" role="img" aria-label="ok"/> Tu equipo repite tareas manuales todos los días</li>
+                        <li><i class="fa fa-check-circle-o me-2" role="img" aria-label="ok"/> Quieres una asistente que responda a tus clientes 24/7</li>
+                    </t>
+                    <t t-elif="'SEO' in product.name or 'E-commerce' in product.name">
+                        <li><i class="fa fa-check-circle-o me-2" role="img" aria-label="ok"/> Apenas te encuentran en Google cuando buscan tu servicio</li>
+                        <li><i class="fa fa-check-circle-o me-2" role="img" aria-label="ok"/> Vendes por WhatsApp o marketplace y quieres tu propia tienda</li>
+                        <li><i class="fa fa-check-circle-o me-2" role="img" aria-label="ok"/> Quieres medir cada peso invertido en tráfico y conversión</li>
+                    </t>
+                    <t t-elif="'Finanzas' in product.name or 'Capital' in product.name">
+                        <li><i class="fa fa-check-circle-o me-2" role="img" aria-label="ok"/> No sabes con claridad cuánto dinero tiene tu empresa cada mes</li>
+                        <li><i class="fa fa-check-circle-o me-2" role="img" aria-label="ok"/> Quieres diversificar excedentes en instrumentos globales</li>
+                        <li><i class="fa fa-check-circle-o me-2" role="img" aria-label="ok"/> Necesitas un consejo financiero claro, sin letras chiquitas</li>
+                    </t>
+                </ul>
+            </section>
+        </xpath>
+    </template>
+
+    <!-- 6. Banner de confianza — después del bloque CTA nativo -->
+    <template id="chart_product_trust_banner" inherit_id="website_sale.product" name="Product — Trust Banner">
+        <xpath expr="//div[hasclass('o_wsale_product_details_content_section_cta')]" position="after">
+            <section class="chart-product-block chart-trust-banner">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <div>
+                        <strong><i class="fa fa-shield me-2" role="img" aria-label="shield"/> Diagnóstico gratuito antes de contratar</strong>
+                        <p class="mb-0 text-muted small">Sin letras chiquitas · Respuesta en 24 hrs.</p>
+                    </div>
+                    <a href="/contactus" class="btn btn-outline-primary">Agendar llamada</a>
+                </div>
+            </section>
+        </xpath>
+    </template>
+
+</odoo>

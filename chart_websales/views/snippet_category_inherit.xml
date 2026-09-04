@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================
+         HERENCIA 3: Snippet de categorías dinámicas
+         Se hereda el template de tarjeta "clickable" que ya usa la
+         homepage (data-template-key="...clickable_items") para que las
+         4 categorías muestren: tagline + precio "Desde $X,XXX MXN".
+         Los datos (tagline / starting_price_label) se inyectan en
+         website.snippet.filter._prepare_category_list_data (modelo).
+         ============================================================ -->
+    <template id="chart_category_card" inherit_id="website_sale.dynamic_filter_template_product_public_category_clickable_items" name="Category Card — Chart Tagline &amp; Price">
+        <xpath expr="//h3[hasclass('h4')]" position="after">
+            <div class="chart-category-tagline" t-if="category.get('tagline')">
+                <t t-out="category['tagline']"/>
+            </div>
+            <div class="chart-category-price" t-if="category.get('starting_price_label')">
+                <i class="fa fa-tag me-1" role="img" aria-label="precio"/>
+                <t t-out="category['starting_price_label']"/>
+            </div>
+        </xpath>
+    </template>
+
+</odoo>

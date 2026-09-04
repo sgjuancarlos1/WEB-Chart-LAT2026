@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================
+         SECCIÓN: Casos de Éxito (template reutilizable).
+         Contenido PLACEHOLDER y genérico — sin nombres de clientes
+         reales ni cifras de rendimiento no confirmadas por el cliente.
+         ============================================================ -->
+    <template id="testimonials_section" name="Casos de Éxito — Placeholder">
+        <section class="chart-testimonials" data-name="Casos de Éxito Grupo Chart">
+            <div class="container">
+                <div class="text-center mb-4">
+                    <h2 class="chart-section-title">Casos de Éxito</h2>
+                    <p class="lead text-muted">Historias reales que publicaremos con tu autorización.</p>
+                </div>
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <blockquote class="chart-testimonial-card">
+                            <p class="chart-testimonial-quote">"Con su acompañamiento logramos ordenar nuestra operación y dejar de depender de hojas de cálculo para el día a día."</p>
+                            <footer class="chart-testimonial-author">
+                                <span class="chart-avatar">A</span>
+                                <span class="ms-2"> <strong>Empresa Cliente A</strong><br/><small class="text-muted">Sector: manufactura</small></span>
+                            </footer>
+                        </blockquote>
+                    </div>
+                    <div class="col-md-6">
+                        <blockquote class="chart-testimonial-card">
+                            <p class="chart-testimonial-quote">"El equipo nos ayudó a construir nuestra tienda en línea y a entender qué canales de venta nos convienen más."</p>
+                            <footer class="chart-testimonial-author">
+                                <span class="chart-avatar">B</span>
+                                <span class="ms-2"> <strong>Empresa Cliente B</strong><br/><small class="text-muted">Sector: comercio</small></span>
+                            </footer>
+                        </blockquote>
+                    </div>
+                </div>
+                <div class="text-center mt-4">
+                    <a class="btn btn-outline-primary" href="/contactus">Quiero una historia así <i class="fa fa-angle-right ms-1" role="img" aria-label="ver"/></a>
+                </div>
+            </div>
+        </section>
+    </template>
+
+</odoo>

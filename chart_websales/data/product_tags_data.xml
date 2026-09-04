@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- ============ BADGES / RIBBONS (mecanismo nativo de Odoo) ============ -->
+        <record id="ribbon_mas_vendido" model="product.ribbon">
+            <field name="name">Más Vendido</field>
+            <field name="bg_color">#c9a24b</field>
+            <field name="text_color">#1a3c6e</field>
+            <field name="position">right</field>
+            <field name="style">tag</field>
+            <field name="assign">manual</field>
+        </record>
+
+        <record id="ribbon_recomendado" model="product.ribbon">
+            <field name="name">Recomendado</field>
+            <field name="bg_color">#1a3c6e</field>
+            <field name="text_color">#ffffff</field>
+            <field name="position">right</field>
+            <field name="style">tag</field>
+            <field name="assign">manual</field>
+        </record>
+
+        <record id="ribbon_nuevo" model="product.ribbon">
+            <field name="name">Nuevo</field>
+            <field name="bg_color">#2e8b57</field>
+            <field name="text_color">#ffffff</field>
+            <field name="position">right</field>
+            <field name="style">tag</field>
+            <field name="assign">manual</field>
+        </record>
+
+        <!-- ============ ETIQUETAS product.tag (filtrar en /shop) ============ -->
+        <record id="tag_mas_vendido" model="product.tag">
+            <field name="name">Más Vendido</field>
+            <field name="color">3</field>
+        </record>
+
+        <record id="tag_recomendado" model="product.tag">
+            <field name="name">Recomendado</field>
+            <field name="color">2</field>
+        </record>
+
+        <record id="tag_nuevo" model="product.tag">
+            <field name="name">Nuevo</field>
+            <field name="color">10</field>
+        </record>
+
+    </data>
+</odoo>

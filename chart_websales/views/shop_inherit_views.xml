@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================
+         HERENCIA 1: Listado de tienda (website_sale.products)
+         - Franja de confianza sobre el grid (sin tocar nada).
+         - Las tarjetas se estilizan por CSS usando sus clases nativas
+           (o_wsale_products_page / oe_product_cart / o_wsale_product_grid_wrapper);
+           el xpath hasclass('oe_product') no es viable porque esa clase
+           vive en t-attf-class, que hasclass no lee.
+         - Badges "Más Vendido"/"Recomendado"/"Nuevo" se renderizan con el
+           mecanismo nativo de ribbons (products_item + product.ribbon).
+         ============================================================ -->
+    <template id="chart_shop_products" inherit_id="website_sale.products" name="Shop — Chart Trust Bar">
+        <xpath expr="//div[@id='products_grid']" position="before">
+            <div class="chart-shop-trust-bar">
+                <div class="container d-flex flex-wrap align-items-center justify-content-center gap-2">
+                    <span><i class="fa fa-check-circle me-1" role="img" aria-label="check"/> Diagnóstico gratuito antes de contratar</span>
+                    <span class="d-none d-md-inline text-muted">·</span>
+                    <span><i class="fa fa-clock-o me-1" role="img" aria-label="clock"/> Respuesta en 24 hrs</span>
+                </div>
+            </div>
+        </xpath>
+    </template>
+
+</odoo>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================
+         HERENCIA 4: Homepage — Sección Showcase de Productos
+         NO reemplaza contenido del Website Builder (arch_db de la vista
+         892 se conserva intacto). Solo APENDA al final de #wrap.
+         ============================================================ -->
+    <template id="chart_homepage_showcase" inherit_id="website.homepage" name="Home — Showcase 4 Soluciones">
+        <xpath expr="//div[@id='wrap']" position="inside">
+            <t t-set="chart_products" t-value="request.env['product.template'].sudo().search([('is_published', '=', True), ('sale_ok', '=', True)], order='website_sequence', limit=4)"/>
+
+            <section class="chart-showcase" data-name="Showcase Grupo Chart — 4 Soluciones">
+                <div class="container">
+                    <div class="text-center mb-4">
+                        <h2 class="chart-section-title">Nuestras 4 Soluciones para Escalar tu Empresa</h2>
+                        <p class="lead text-muted">ERP, Inteligencia Artificial, Ventas Digitales y Finanzas &amp; Capital.</p>
+                    </div>
+                    <div class="row g-4 chart-showcase-grid">
+                        <t t-foreach="chart_products" t-as="product">
+                            <div class="col-md-6 col-lg-3">
+                                <a class="chart-showcase-card" t-att-href="'/shop/' + slug(product)">
+                                    <div class="chart-showcase-media">
+                                        <t t-if="product.image_1024">
+                                            <img t-att-src="'/web/image/product.template/%s/image_1024' % product.id" alt="Imagen del producto" loading="lazy" class="img-fluid"/>
+                                        </t>
+                                        <t t-else="">
+                                            <div class="chart-showcase-ph"></div>
+                                        </t>
+                                        <span t-if="product.website_ribbon_id" class="chart-showcase-badge"><t t-out="product.website_ribbon_id.name"/></span>
+                                    </div>
+                                    <div class="chart-showcase-body">
+                                        <h4><t t-out="product.name.split(' — ')[0]"/></h4>
+                                        <p class="chart-showcase-tagline">
+                                            <t t-if="product.description_sale" t-out="(product.description_sale or '').splitlines()[0]"/>
+                                        </p>
+                                        <span class="chart-showcase-price">
+                                            Desde
+                                            <span t-esc="min(product.product_variant_ids.mapped('list_price')) if product.product_variant_ids else product.list_price"
+                                                  t-options="{'widget': 'monetary', 'display_currency': website.currency_id}"/>
+                                        </span>
+                                        <span class="chart-showcase-cta">Ver detalles <i class="fa fa-angle-right ms-1" role="img" aria-label="ver"/></span>
+                                    </div>
+                                </a>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+            </section>
+
+            <t t-call="chart_websales.testimonials_section"/>
+        </xpath>
+    </template>
+
+</odoo>
