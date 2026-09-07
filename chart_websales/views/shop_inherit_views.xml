@@ -26,6 +26,10 @@
                 </div>
             </div>
         </xpath>
+        <!-- Hide the product categories menu filter section (category cards block) -->
+        <xpath expr="//div[hasclass('o_wsale_product_categories_menu')]" position="attributes">
+            <attribute name="class" add="d-none" separator=" "/>
+        </xpath>
     </template>
 
 </odoo>
