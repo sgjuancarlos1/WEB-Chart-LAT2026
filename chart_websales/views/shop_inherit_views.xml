@@ -26,10 +26,14 @@
                 </div>
             </div>
         </xpath>
-        <!-- Hide the product categories menu filter section (category cards block) -->
-        <xpath expr="//div[hasclass('o_wsale_product_categories_menu')]" position="attributes">
-            <attribute name="class" add="d-none" separator=" "/>
-        </xpath>
+        <!-- NOTA: se retiró el xpath que añadía d-none a un supuesto
+             ".o_wsale_product_categories_menu". Esa clase NO existe en Odoo 19
+             (los objetivos reales son #o_wsale_categories_filmstrip y
+             div.products_categories), por lo que el xpath no resolvía y, al
+             actualizar el módulo, hacía fallar la carga de la vista.
+             El /shop conserva navegación, categorías y filtros.
+             El bloque retirado de la HOMEPAGE se gestiona de forma focalizada
+             en tools/remove_homepage_category_block.py (respaldo + reversible). -->
     </template>
 
 </odoo>
