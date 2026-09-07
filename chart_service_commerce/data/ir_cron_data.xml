@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- =====================================================================
+             CRON JOBS: Service automation workflows
+             ===================================================================== -->
+
+        <!-- Check pending service activations (72h threshold + email verified) -->
+        <record id="cron_check_pending_activation" model="ir.cron">
+            <field name="name">Check Pending Service Activations</field>
+            <field name="model_id" ref="model_chart_service_contract"/>
+            <field name="state">code</field>
+            <field name="code">env['chart.service.contract']._cron_check_pending_activation()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="numbercall">-1</field>
+            <field name="doall">False</field>
+            <field name="nextcall">2026-09-08 02:00:00</field>
+        </record>
+
+        <!-- Process pending provisioning tasks -->
+        <record id="cron_process_provisioning_tasks" model="ir.cron">
+            <field name="name">Process Provisioning Tasks</field>
+            <field name="model_id" ref="model_chart_provisioning_task"/>
+            <field name="state">code</field>
+            <field name="code">env['chart.provisioning.task']._cron_process_pending_tasks()</field>
+            <field name="interval_number">6</field>
+            <field name="interval_type">hours</field>
+            <field name="numbercall">-1</field>
+            <field name="doall">False</field>
+            <field name="nextcall">2026-09-08 03:00:00</field>
+        </record>
+
+        <!-- Monthly billing: generate invoices for contracts past due -->
+        <record id="cron_monthly_billing" model="ir.cron">
+            <field name="name">Monthly Billing - Generate Service Invoices</field>
+            <field name="model_id" ref="model_chart_service_contract"/>
+            <field name="state">code</field>
+            <field name="code">env['chart.service.contract']._cron_monthly_billing()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="numbercall">-1</field>
+            <field name="doall">False</field>
+            <field name="nextcall">2026-09-08 04:00:00</field>
+        </record>
+
+    </data>
+</odoo>

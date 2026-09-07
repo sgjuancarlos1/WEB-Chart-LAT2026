@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_service_contract_user,Service Contract - User Read,model_chart_service_contract,base.group_user,1,0,0,0
+access_service_contract_manager,Service Contract - Manager Full,model_chart_service_contract,base.group_erp_manager,1,1,1,1
+access_provisioning_task_manager,Provisioning Task - Manager,model_chart_provisioning_task,base.group_erp_manager,1,1,1,0
+access_service_activation_manager,Service Activation - Manager,model_chart_service_activation,base.group_erp_manager,1,1,1,0
+access_service_contract_portal,Service Contract - Portal User,model_chart_service_contract,base.group_portal,1,0,0,0
