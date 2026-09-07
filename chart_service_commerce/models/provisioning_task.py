@@ -1,178 +1,106 @@
-import logging
+# -*- coding: utf-8 -*-
+"""Tarea de preparación de un contrato.
 
+Corregido vs. la propuesta anterior:
+- NINGUNA tarea se auto-completa ni simula trabajo (no hay _task_api_key_gen,
+  no se guarda ninguna clave en metadata del contrato).
+- Una tarea pasa a 'done' SOLO cuando una persona autorizada la verifica y la
+  marca manualmente, dejando evidencia (fecha + responsable + nota).
+- El campo 'code' clasifica el tipo de paso; no ejecuta nada por sí mismo.
+"""
 from odoo import _, api, fields, models
+from odoo.exceptions import UserError
 
-_logger = logging.getLogger(__name__)
 
-
-class ProvisioningTask(models.Model):
+class ChartProvisioningTask(models.Model):
     _name = 'chart.provisioning.task'
-    _description = 'Provisioning Task — Service Setup Pipeline'
-    _inherit = ['mail.thread', 'mail.activity.mixin']
-    _order = 'due_date, id'
+    _description = 'Tarea de preparación de servicio'
+    _order = 'sequence, id'
 
-    # =========================================================================
-    # FIELDS: Task configuration
-    # =========================================================================
-    name = fields.Char(
-        string='Task Name',
-        required=True,
-        help='e.g., "Day 1: Data Import"'
-    )
-    contract_id = fields.Many2one(
-        'chart.service.contract',
-        string='Service Contract',
-        required=True,
-        ondelete='cascade',
-        help='Parent service contract'
-    )
-    task_type = fields.Selection([
-        ('data_import', 'Data Import'),
-        ('api_key_gen', 'API Key Generation'),
-        ('user_setup', 'User Setup'),
-        ('onboarding_call', 'Onboarding Call'),
-    ], string='Task Type', required=True, help='Type of provisioning task')
+    name = fields.Char(string='Tarea', required=True, translate=True)
+    code = fields.Selection(
+        selection=[
+            ('data_verification', 'Verificación de identidad y datos'),
+            ('access_setup', 'Accesos e integraciones'),
+            ('data_import', 'Importación de datos'),
+            ('user_setup', 'Configuración de usuario'),
+            ('onboarding', 'Onboarding y capacitación'),
+            ('other', 'Otra'),
+        ],
+        string='Tipo de paso', required=True, default='other')
+    contract_id = fields.Many2one('chart.service.contract', string='Contrato',
+                                  required=True, ondelete='cascade', index=True)
+    partner_id = fields.Many2one(related='contract_id.partner_id', store=True, index=True)
+    company_id = fields.Many2one(related='contract_id.company_id', store=True)
+    sequence = fields.Integer(default=10)
+    state = fields.Selection(
+        selection=[
+            ('pending', 'Pendiente'),
+            ('in_progress', 'En curso'),
+            ('done', 'Hecha (verificada)'),
+            ('blocked', 'Bloqueada'),
+            ('skipped', 'No aplica'),
+        ],
+        string='Estado', default='pending', required=True)
+    responsible_id = fields.Many2one('res.users', string='Responsable',
+                                     default=lambda self: self.env.user)
+    started_date = fields.Datetime(readonly=True, copy=False)
+    done_date = fields.Datetime(readonly=True, copy=False)
+    done_by_id = fields.Many2one('res.users', string='Verificada por', readonly=True, copy=False)
+    completion_note = fields.Char(
+        string='Evidencia / nota de cierre',
+        help='Obligatoria para poder marcar la tarea como hecha. Se captura ANTES '
+             'del cierre manual; queda guardada como evidencia de quién y cuándo.')
+    notes = fields.Text(string='Notas')
 
-    # =========================================================================
-    # STATE & WORKFLOW
-    # =========================================================================
-    state = fields.Selection([
-        ('pending', 'Pending'),
-        ('in_progress', 'In Progress'),
-        ('completed', 'Completed'),
-        ('failed', 'Failed'),
-    ], string='State', default='pending', tracking=True)
+    # ------------------------------------------------------------- transición
+    def action_start(self):
+        for task in self:
+            if task.state not in ('pending', 'blocked'):
+                raise UserError(_("Solo una tarea pendiente o bloqueada puede iniciarse."))
+            task.write({'state': 'in_progress', 'started_date': fields.Datetime.now()})
+        return True
 
-    assigned_to = fields.Many2one(
-        'res.users',
-        string='Assigned To',
-        help='User responsible for task execution'
-    )
+    def action_block(self):
+        for task in self:
+            task.write({'state': 'blocked'})
+        return True
 
-    # =========================================================================
-    # DATES
-    # =========================================================================
-    due_date = fields.Date(
-        string='Due Date',
-        required=True,
-        help='When task should be completed'
-    )
-    completion_date = fields.Date(
-        string='Completion Date',
-        readonly=True,
-        help='When task was actually completed'
-    )
+    def action_done(self):
+        """Cierre MANUAL con evidencia. Nunca se llama desde un cron ni desde la
+        activación del contrato: el contrato no puede activarse con tareas abiertas."""
+        for task in self:
+            if task.state == 'done':
+                continue
+            if not task.completion_note:
+                raise UserError(_(
+                    "La tarea '%s' necesita una evidencia o nota de cierre antes "
+                    "de marcarse como hecha.", task.name))
+            task.write({
+                'state': 'done',
+                'done_date': fields.Datetime.now(),
+                'done_by_id': self.env.uid,
+            })
+        return True
 
-    # =========================================================================
-    # NOTES & DOCUMENTATION
-    # =========================================================================
-    notes = fields.Text(
-        string='Notes',
-        help='Task details, execution notes, errors'
-    )
-    attachment_ids = fields.Many2many(
-        'ir.attachment',
-        relation='chart_provisioning_task_attachment_rel',
-        column1='task_id',
-        column2='attachment_id',
-        string='Attachments',
-        help='Related files (API docs, imports, etc.)'
-    )
+    def action_skip(self):
+        for task in self:
+            task.write({'state': 'skipped',
+                        'completion_note': task.completion_note or _('No aplica')})
+        return True
 
-    # =========================================================================
-    # ACTIONS
-    # =========================================================================
-    def action_mark_in_progress(self):
-        """Transition task to in_progress."""
-        self.state = 'in_progress'
-        self.message_post(body=_('Task marked as in progress.'))
+    def action_reset_pending(self):
+        for task in self:
+            task.write({'state': 'pending', 'started_date': False, 'done_date': False,
+                        'done_by_id': False, 'completion_note': False})
+        return True
 
-    def action_mark_completed(self):
-        """Transition task to completed."""
-        self.state = 'completed'
-        self.completion_date = fields.Date.today()
-        self.message_post(body=_('Task completed.'))
-
-    def action_mark_failed(self):
-        """Transition task to failed."""
-        self.state = 'failed'
-        self.message_post(body=_('Task marked as failed.'))
-        # Notify admin
-        self.contract_id.message_post(
-            body=_('Provisioning task %s failed for contract %s') % (self.name, self.contract_id.name),
-            message_type='comment',
-        )
-
-    # =========================================================================
-    # CRON JOB: Process pending tasks
-    # =========================================================================
-    @api.model
-    def _cron_process_pending_tasks(self):
-        """Scheduled action to process pending provisioning tasks."""
-        pending_tasks = self.search([('state', '=', 'pending')])
-        
-        for task in pending_tasks:
-            if task.due_date <= fields.Date.today():
-                try:
-                    task._execute_task()
-                    task.action_mark_completed()
-                except Exception as e:
-                    _logger.error("Failed to execute task %s: %s", task.name, str(e))
-                    task.state = 'failed'
-                    task.notes = str(e)
-
-    def _execute_task(self):
-        """Route task to appropriate handler by task_type."""
-        handlers = {
-            'data_import': self._task_data_import,
-            'api_key_gen': self._task_api_key_gen,
-            'user_setup': self._task_user_setup,
-            'onboarding_call': self._task_onboarding_call,
-        }
-        
-        handler = handlers.get(self.task_type)
-        if handler:
-            handler()
-        else:
-            raise ValueError(f"Unknown task type: {self.task_type}")
-
-    # =========================================================================
-    # TASK HANDLERS: Implement per task type
-    # =========================================================================
-    def _task_data_import(self):
-        """Execute data import task (placeholder)."""
-        contract = self.contract_id
-        # In production, call external API or queue import job
-        # For now, just mark metadata
-        contract.metadata['data_import_status'] = 'completed'
-        self.notes = 'Data import completed (placeholder)'
-        _logger.info("Data import task completed for contract %s", contract.name)
-
-    def _task_api_key_gen(self):
-        """Generate API key for service integration."""
-        contract = self.contract_id
-        # In production, generate cryptographic key and store securely
-        api_key = self.env['ir.config_parameter'].sudo().get_param(
-            'chart_service_commerce.api_key_secret'
-        ) or 'demo_key_' + contract.name
-        contract.metadata['api_key'] = api_key
-        self.notes = 'API key generated'
-        _logger.info("API key generated for contract %s", contract.name)
-
-    def _task_user_setup(self):
-        """Create user accounts in the service (placeholder)."""
-        contract = self.contract_id
-        # In production, call provisioning API
-        contract.metadata['users_created'] = 1
-        self.notes = 'User account setup completed'
-        _logger.info("User setup task completed for contract %s", contract.name)
-
-    def _task_onboarding_call(self):
-        """Queue onboarding call for CSM assignment."""
-        contract = self.contract_id
-        # Assign to admin or CSM group
-        admin_user = self.env.ref('base.user_admin', raise_if_not_found=False)
-        if admin_user:
-            self.assigned_to = admin_user.id
-        self.notes = 'Onboarding call scheduled'
-        _logger.info("Onboarding call queued for contract %s", contract.name)
+    # ------------------------------------------------------------------ guard
+    @api.constrains('state', 'done_date', 'done_by_id', 'completion_note')
+    def _check_done_evidence(self):
+        for task in self:
+            if task.state == 'done' and not (task.done_date and task.done_by_id
+                                             and task.completion_note):
+                raise UserError(_(
+                    "La tarea '%s' no puede quedar 'Hecha' sin fecha, verificador "
+                    "y evidencia.", task.name))

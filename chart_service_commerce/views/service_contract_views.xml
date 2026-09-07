@@ -1,4 +1,236 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Placeholder view file - content added in next stages -->
+    <!-- ============================ LIST ============================ -->
+    <record id="view_chart_service_contract_list" model="ir.ui.view">
+        <field name="name">chart.service.contract.list</field>
+        <field name="model">chart.service.contract</field>
+        <field name="arch" type="xml">
+            <list string="Contratos de servicio" decoration-info="state == 'pending_preparation'"
+                  decoration-muted="state == 'canceled'" decoration-success="state == 'active'">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="product_id"/>
+                <field name="amount_total"/>
+                <field name="periodicity"/>
+                <field name="state"/>
+                <field name="contract_date"/>
+                <field name="activation_due_at" optional="show"/>
+                <field name="activation_date" optional="show"/>
+                <field name="task_progress" optional="hide" widget="percentage"/>
+                <field name="currency_id" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ============================ FORM ============================ -->
+    <record id="view_chart_service_contract_form" model="ir.ui.view">
+        <field name="name">chart.service.contract.form</field>
+        <field name="model">chart.service.contract</field>
+        <field name="arch" type="xml">
+            <form string="Contrato de servicio">
+                <header>
+                    <button name="action_confirm_contract" string="Confirmar contratación"
+                            type="object" class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_start_preparation" string="Iniciar preparación"
+                            type="object" class="btn-primary"
+                            invisible="state != 'pending_preparation'"/>
+                    <button name="action_mark_environment_checked"
+                            string="Registrar comprobación de entorno" type="object"
+                            invisible="state != 'in_preparation'"/>
+                    <button name="action_activate" string="Activar servicio (aprobación manual)"
+                            type="object" class="btn-primary" groups="chart_service_commerce.group_chart_service_manager"
+                            invisible="state != 'pending_activation_approval'"/>
+                    <button name="action_hold" string="Pausar" type="object"
+                            invisible="state not in ('active','in_preparation')"/>
+                    <button name="action_cancel" string="Cancelar" type="object"
+                            invisible="state in ('canceled','active')"/>
+                    <button name="action_reset_draft" string="Volver a borrador" type="object"
+                            invisible="state not in ('pending_preparation','in_preparation','on_hold','canceled')"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,pending_preparation,in_preparation,pending_activation_approval,active"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Cliente y origen">
+                            <field name="partner_id"/>
+                            <field name="authorized_partner_ids" widget="many2many_tags"
+                                   options="{'no_create': True}"/>
+                            <field name="sale_order_id"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="contract_date"/>
+                            <field name="activation_due_at"/>
+                            <field name="ready_at" readonly="1"/>
+                            <field name="activation_date"/>
+                            <field name="activated_by" readonly="1"/>
+                        </group>
+                        <group string="Servicio">
+                            <field name="product_id"/>
+                            <field name="periodicity"/>
+                            <field name="service_type"/>
+                            <field name="data_complete"/>
+                            <field name="data_missing" invisible="data_complete"/>
+                            <field name="email_verified"/>
+                            <field name="environment_checked"/>
+                            <field name="environment_checked_date" readonly="1"/>
+                            <field name="environment_checked_by" readonly="1"/>
+                            <field name="environment_url"/>
+                            <field name="environment_note"/>
+                            <field name="billing_anchor_date" invisible="not activation_date"/>
+                        </group>
+                    </group>
+                    <group string="Importes contratados (congelados del pedido)">
+                        <group>
+                            <field name="amount_one_time"/>
+                            <field name="amount_recurring"/>
+                        </group>
+                        <group>
+                            <field name="amount_untaxed"/>
+                            <field name="amount_total"/>
+                            <field name="payment_status"/>
+                        </group>
+                    </group>
+                    <group string="Condiciones aceptadas">
+                        <group>
+                            <field name="terms_accepted"/>
+                            <field name="terms_version"/>
+                            <field name="terms_accepted_datetime"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Líneas contratadas" name="lines">
+                            <field name="order_line_ids" readonly="1">
+                                <list>
+                                    <field name="product_id"/>
+                                    <field name="product_uom_qty"/>
+                                    <field name="price_unit"/>
+                                    <field name="price_subtotal"/>
+                                    <field name="price_total"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Preparación" name="tasks">
+                            <field name="task_ids" context="{'default_contract_id': id}">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="code"/>
+                                    <field name="responsible_id"/>
+                                    <field name="state"/>
+                                    <field name="done_date" optional="show"/>
+                                    <field name="done_by_id" optional="show"/>
+                                    <field name="completion_note"/>
+                                </list>
+                            </field>
+                            <group>
+                                <field name="task_total"/>
+                                <field name="task_done"/>
+                                <field name="task_progress" widget="percentage"/>
+                            </group>
+                        </page>
+                        <page string="Períodos facturables" name="periods">
+                            <field name="billing_period_ids" readonly="1">
+                                <list>
+                                    <field name="index"/>
+                                    <field name="date_start"/>
+                                    <field name="date_end"/>
+                                    <field name="amount"/>
+                                    <field name="charge_type"/>
+                                    <field name="state"/>
+                                    <field name="draft_invoice_generated"/>
+                                    <field name="move_id"/>
+                                    <field name="invoiced"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </list>
+                            </field>
+                            <div class="text-muted">
+                                Los períodos se calculan por meses calendario desde la
+                                fecha de activación real. En staging se puede generar un
+                                BORRADOR de factura (account.move en draft): no se timbra,
+                                no se envía ni se marca pagado.
+                            </div>
+                            <button name="action_generate_draft_invoices" type="object"
+                                    string="Generar borradores de factura (staging)"
+                                    class="btn-secondary"
+                                    confirm="Generar borradores de factura para los períodos sin borrador? No se timbra ni envía nada."/>
+                        </page>
+                        <page string="Condiciones económicas" name="terms">
+                            <field name="economic_component_ids" readonly="1">
+                                <list>
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="product_id"/>
+                                    <field name="quantity"/>
+                                    <field name="uom_id"/>
+                                    <field name="price_unit"/>
+                                    <field name="discount"/>
+                                    <field name="price_subtotal"/>
+                                    <field name="price_total"/>
+                                    <field name="charge_type"/>
+                                    <field name="periodicity"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </list>
+                            </field>
+                            <field name="economic_terms_snapshot"/>
+                            <field name="notes" placeholder="Notas internas del contrato"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================ SEARCH ============================ -->
+    <record id="view_chart_service_contract_search" model="ir.ui.view">
+        <field name="name">chart.service.contract.search</field>
+        <field name="model">chart.service.contract</field>
+        <field name="arch" type="xml">
+            <search string="Contratos">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="product_id"/>
+                <field name="sale_order_id"/>
+                <filter name="f_pending_prep" string="Pendiente de preparación"
+                        domain="[('state','=','pending_preparation')]"/>
+                <filter name="f_in_prep" string="En preparación"
+                        domain="[('state','=','in_preparation')]"/>
+                <filter name="f_ready" string="Listas para activar"
+                        domain="[('state','=','pending_activation_approval')]"/>
+                <filter name="f_active" string="Activos" domain="[('state','=','active')]"/>
+                <separator/>
+                <filter name="f_group_partner" string="Cliente" context="{'group_by':'partner_id'}"/>
+                <filter name="f_group_state" string="Estado" context="{'group_by':'state'}"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- ============================ ACTION / MENÚ ============================ -->
+    <record id="action_chart_service_contract" model="ir.actions.act_window">
+        <field name="name">Contratos de servicio</field>
+        <field name="res_model">chart.service.contract</field>
+        <field name="view_mode">list,form,search</field>
+        <field name="search_view_id" ref="view_chart_service_contract_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Sin contratos todavía</p>
+            <p>Los contratos se crean al confirmar un pedido que contiene servicios
+               contratables. Ninguno se activa ni factura automáticamente.</p>
+        </field>
+    </record>
+
+    <record id="action_chart_provisioning_task" model="ir.actions.act_window">
+        <field name="name">Tareas de preparación</field>
+        <field name="res_model">chart.provisioning.task</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_chart_services_root" name="Servicios Chart"
+              sequence="55" 
+              groups="group_chart_service_user"/>
+    <menuitem id="menu_chart_contracts" name="Contratos" parent="menu_chart_services_root"
+              action="action_chart_service_contract" sequence="10"/>
+    <menuitem id="menu_chart_tasks" name="Preparación" parent="menu_chart_services_root"
+              action="action_chart_provisioning_task" sequence="20"/>
 </odoo>

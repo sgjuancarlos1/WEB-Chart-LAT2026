@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============ Entrada en el menú de breadcrumbs del portal ============ -->
+    <template id="portal_my_home_menu_solutions" name="Portal layout : Mis soluciones"
+              inherit_id="portal.portal_breadcrumbs" priority="25">
+        <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
+            <li t-if="page_name == 'chart_solutions'" class="breadcrumb-item active"
+                aria-current="page">Mis soluciones</li>
+        </xpath>
+    </template>
+
+    <!-- ============ Tarjeta en la portada del portal ============ -->
+    <template id="portal_my_home_solutions" name="Mis soluciones" customize_show="True"
+              inherit_id="portal.portal_my_home" priority="25">
+        <div id="portal_client_category" position="inside">
+            <t t-call="portal.portal_docs_entry">
+                <t t-set="icon" t-value="'/sale/static/src/img/bag.svg'"/>
+                <t t-set="title">Mis soluciones</t>
+                <t t-set="text">Consulta el estado de tus servicios contratados y su preparación</t>
+                <t t-set="url" t-value="'/my/soluciones'"/>
+                <t t-set="placeholder_count" t-value="'chart_contract_count'"/>
+            </t>
+        </div>
+    </template>
+
+    <!-- ============================ LISTA ============================ -->
+    <template id="portal_my_solutions" name="Mis soluciones">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Mis soluciones</t>
+            </t>
+            <div t-if="not contracts" class="alert alert-info" role="alert">
+                Aún no tienes servicios contratados.
+                <a href="/shop" class="alert-link">Ver soluciones disponibles</a>.
+            </div>
+            <t t-if="contracts" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>Servicio</th>
+                        <th>Referencia</th>
+                        <th class="text-end">Contratado</th>
+                        <th class="text-end">Importe</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <t t-foreach="contracts" t-as="contract">
+                    <tr>
+                        <td>
+                            <a t-att-href="'/my/soluciones/' + str(contract.id)"
+                               t-out="contract.product_id.display_name or contract.name"/>
+                        </td>
+                        <td><span t-field="contract.name"/></td>
+                        <td class="text-end"><span t-field="contract.contract_date"
+                                                   t-options='{"format": "dd/MM/yyyy"}'/></td>
+                        <td class="text-end">
+                            <span t-out="contract.currency_id.format(contract.amount_total)"/>
+                            <t t-if="contract.periodicity != 'none'">
+                                <small class="text-muted"> / <span t-field="contract.periodicity"/></small>
+                            </t>
+                        </td>
+                        <td><span class="badge text-bg-info" t-out="contract.state_label"/></td>
+                    </tr>
+                </t>
+            </t>
+        </t>
+    </template>
+
+    <!-- ============================ VERIFICACIÓN EMAIL ============================ -->
+    <template id="portal_email_verify_result" name="Resultado de verificación de email">
+        <t t-call="portal.portal_layout">
+            <t t-set="title" t-value="'Verificación de correo'"/>
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <div t-if="verified" class="alert alert-success" role="alert">
+                        <h4 class="alert-heading">Correo verificado</h4>
+                        <p>
+                            Gracias, <strong t-out="contract.partner_id.name or ''"/>. Tu correo
+                            <strong t-out="contract.email_verified_recipient or ''"/> quedó
+                            verificado. No se ha realizado ningún cargo ni activación.
+                        </p>
+                        <hr/>
+                        <a href="/my/soluciones" class="btn btn-primary">Ir a Mis soluciones</a>
+                    </div>
+                    <div t-if="not verified" class="alert alert-warning" role="alert">
+                        <h4 class="alert-heading">No se pudo verificar</h4>
+                        <p t-out="error or 'El enlace no es válido.'"/>
+                        <p class="mb-0">
+                            Si el enlace caducó, solicita uno nuevo desde tu portal.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- ============================ DETALLE ============================ -->
+    <template id="portal_my_solution_detail" name="Detalle de solución">
+        <t t-call="portal.portal_layout">
+            <t t-set="title" t-value="contract.product_id.display_name or contract.name"/>
+            <div class="row">
+                <div class="col-md-8">
+                    <h3 t-out="contract.product_id.display_name or contract.name"/>
+                    <p class="text-muted">
+                        Referencia <strong t-field="contract.name"/> ·
+                        Pedido <span t-field="contract.sale_order_id.name"/>
+                    </p>
+                    <div class="alert alert-info" role="alert">
+                        <strong>Estado:</strong> <span t-out="contract.state_label"/>.
+                        <t t-if="contract.state == 'pending_preparation'">
+                            Estamos preparando tu servicio. No se ha realizado ningún cargo.
+                        </t>
+                        <t t-if="contract.activation_due_at">
+                            <div class="mt-2 small text-muted">
+                                Objetivo de entrega (plazo informativo, hora de Ciudad de México):
+                                <span t-field="contract.activation_due_at"
+                                      t-options='{"format": "dd/MM/yyyy HH:mm", "timezone": "America/Mexico_City"}'/>
+                            </div>
+                        </t>
+                    </div>
+                    <!-- Acceso al entorno: SOLO cuando existe un acceso real validado.
+                         Nunca se muestran credenciales. El destino es la URL del
+                         entorno operativo del cliente, distinta del portal comercial. -->
+                    <t t-if="contract.state == 'active' and contract.environment_url">
+                        <a t-att-href="contract.environment_url" target="_blank"
+                           rel="noopener noreferrer" class="btn btn-primary mb-3">
+                            Entrar a mi Odoo
+                        </a>
+                        <p class="text-muted small">
+                            Acceso al entorno operativo de tu servicio. Tus credenciales
+                            se entregan por un canal seguro aparte; nunca se muestran aquí.
+                        </p>
+                    </t>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">Importes contratados</div>
+                        <div class="card-body">
+                            <table class="table table-sm mb-0">
+                                <tbody>
+                                    <tr t-if="contract.amount_one_time">
+                                        <td>Cargos únicos</td>
+                                        <td class="text-end"
+                                            t-out="contract.currency_id.format(contract.amount_one_time)"/>
+                                    </tr>
+                                    <tr t-if="contract.amount_recurring">
+                                        <td>Cargo recurrente (<span t-field="contract.periodicity"/>)</td>
+                                        <td class="text-end"
+                                            t-out="contract.currency_id.format(contract.amount_recurring)"/>
+                                    </tr>
+                                    <tr>
+                                        <th>Total</th>
+                                        <th class="text-end"
+                                            t-out="contract.currency_id.format(contract.amount_total)"/>
+                                    </tr>
+                                    <tr>
+                                        <td colspan="2" class="text-success small">
+                                            Pago al contratar: ninguno
+                                            (<span t-field="contract.payment_status"/>)
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <h4 class="mt-4">Líneas del servicio</h4>
+            <t t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>Variante</th>
+                        <th class="text-end">Cantidad</th>
+                        <th class="text-end">Precio unitario</th>
+                        <th class="text-end">Total</th>
+                    </tr>
+                </thead>
+                <t t-foreach="contract.order_line_ids" t-as="line">
+                    <tr>
+                        <td><span t-field="line.product_id"/></td>
+                        <td class="text-end"><span t-out="line.product_uom_qty"/></td>
+                        <td class="text-end"><span t-out="contract.currency_id.format(line.price_unit)"/></td>
+                        <td class="text-end"><span t-out="contract.currency_id.format(line.price_total)"/></td>
+                    </tr>
+                </t>
+            </t>
+
+            <h4 class="mt-4">Preparación</h4>
+            <div t-if="not contract.task_total" class="text-muted">
+                La preparación comenzará cuando el equipo revise tus datos.
+            </div>
+            <div t-if="contract.task_total" class="mb-3">
+                <div class="progress" role="progressbar"
+                     t-att-aria-valuenow="int(contract.task_progress)"
+                     aria-valuemin="0" aria-valuemax="100" style="height: 20px">
+                    <div class="progress-bar"
+                         t-attf-style="width: {{ int(contract.task_progress) }}%"
+                         t-out="'%d/%d' % (contract.task_done, contract.task_total)"/>
+                </div>
+                <p class="text-muted small mt-2">
+                    Progreso de preparación del servicio. Los pasos internos del
+                    equipo no se publican en el portal.
+                </p>
+            </div>
+
+            <h4 class="mt-4">Condiciones de contratación</h4>
+            <pre class="bg-light p-3 rounded small" t-out="contract.economic_terms_snapshot"/>
+            <p class="text-muted small">
+                Aceptadas el <span t-field="contract.terms_accepted_datetime"
+                                   t-options='{"format": "dd/MM/yyyy HH:mm"}'/>
+                (versión <span t-field="contract.terms_version"/>).
+            </p>
+        </t>
+    </template>
+</odoo>

@@ -1,27 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<odoo>
-    <data noupdate="1">
-        <!-- =====================================================================
-             SEQUENCES: Service contract and related entities
-             ===================================================================== -->
-
-        <!-- Service Contract Sequence: CT-2026-00001 -->
-        <record id="seq_service_contract" model="ir.sequence">
-            <field name="name">Service Contract</field>
-            <field name="code">chart.service.contract</field>
-            <field name="prefix">CT-</field>
-            <field name="padding">5</field>
-            <field name="number_next">1</field>
-        </record>
-
-        <!-- Provisioning Task Sequence (optional, if using internal IDs) -->
-        <record id="seq_provisioning_task" model="ir.sequence">
-            <field name="name">Provisioning Task</field>
-            <field name="code">chart.provisioning.task</field>
-            <field name="prefix">TASK-</field>
-            <field name="padding">4</field>
-            <field name="number_next">1</field>
-        </record>
-
-    </data>
+<odoo noupdate="1">
+    <record id="seq_chart_service_contract" model="ir.sequence">
+        <field name="name">Contrato de servicio Chart</field>
+        <field name="code">chart.service.contract</field>
+        <field name="prefix">CS-%(year)s-</field>
+        <field name="padding">5</field>
+        <field name="company_id" eval="False"/>
+    </record>
 </odoo>

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- =====================================================================
+         Grupos propios
+         ===================================================================== -->
+    <record id="privilege_chart_services" model="res.groups.privilege">
+        <field name="name">Servicios Chart</field>
+        <field name="sequence">30</field>
+        <field name="category_id" ref="base.module_category_sales"/>
+    </record>
+
+    <record id="group_chart_service_user" model="res.groups">
+        <field name="name">Preparador de servicios</field>
+        <field name="privilege_id" ref="privilege_chart_services"/>
+        <field name="user_ids" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
+        <field name="comment">Puede preparar servicios y cerrar tareas con evidencia,
+            pero NO puede activar contratos.</field>
+    </record>
+
+    <record id="group_chart_service_manager" model="res.groups">
+        <field name="name">Responsable de servicios</field>
+        <field name="privilege_id" ref="privilege_chart_services"/>
+        <field name="implied_ids" eval="[(4, ref('group_chart_service_user'))]"/>
+        <field name="comment">Único grupo que puede aprobar la activación real de un
+            contrato (activación asistida).</field>
+    </record>
+
+    <!-- =====================================================================
+         Reglas de propiedad (portal)
+         NOTA: una record rule NUNCA concede permisos de acceso; solo los
+         restringe. Los permisos base vienen del CSV (ACL).
+         ===================================================================== -->
+    <record id="rule_contract_portal_own" model="ir.rule">
+        <field name="name">Contratos: solo el titular autorizado (portal)</field>
+        <field name="model_id" ref="model_chart_service_contract"/>
+        <field name="domain_force">['|', ('partner_id', '=', user.partner_id), ('authorized_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="rule_contract_company" model="ir.rule">
+        <field name="name">Contratos: por compañía (interno)</field>
+        <field name="model_id" ref="model_chart_service_contract"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="active" eval="True"/>
+    </record>
+
+    <record id="rule_task_portal_own" model="ir.rule">
+        <field name="name">Tareas: solo las del contrato del titular autorizado (portal, lectura)</field>
+        <field name="model_id" ref="model_chart_provisioning_task"/>
+        <field name="domain_force">['|', ('contract_id.partner_id', '=', user.partner_id), ('contract_id.authorized_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="rule_task_company" model="ir.rule">
+        <field name="name">Tareas: por compañía (interno)</field>
+        <field name="model_id" ref="model_chart_provisioning_task"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="active" eval="True"/>
+    </record>
+
+    <record id="rule_period_portal_own" model="ir.rule">
+        <field name="name">Períodos: solo los del contrato del titular autorizado (portal, lectura)</field>
+        <field name="model_id" ref="model_chart_service_billing_period"/>
+        <field name="domain_force">['|', ('contract_id.partner_id', '=', user.partner_id), ('contract_id.authorized_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="rule_component_portal_own" model="ir.rule">
+        <field name="name">Componentes: solo los del contrato del titular autorizado (portal, lectura)</field>
+        <field name="model_id" ref="model_chart_service_economic_component"/>
+        <field name="domain_force">['|', ('contract_id.partner_id', '=', user.partner_id), ('contract_id.authorized_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="rule_period_company" model="ir.rule">
+        <field name="name">Períodos: por compañía (interno)</field>
+        <field name="model_id" ref="model_chart_service_billing_period"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

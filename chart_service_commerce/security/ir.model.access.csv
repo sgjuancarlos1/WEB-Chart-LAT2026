@@ -1,6 +1,16 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_service_contract_user,Service Contract - User Read,model_chart_service_contract,base.group_user,1,0,0,0
-access_service_contract_manager,Service Contract - Manager Full,model_chart_service_contract,base.group_erp_manager,1,1,1,1
-access_provisioning_task_manager,Provisioning Task - Manager,model_chart_provisioning_task,base.group_erp_manager,1,1,1,0
-access_service_activation_manager,Service Activation - Manager,model_chart_service_activation,base.group_erp_manager,1,1,1,0
-access_service_contract_portal,Service Contract - Portal User,model_chart_service_contract,base.group_portal,1,0,0,0
+access_contract_portal,chart.service.contract portal,model_chart_service_contract,base.group_portal,1,0,0,0
+access_contract_user,chart.service.contract user,model_chart_service_contract,group_chart_service_user,1,1,1,0
+access_contract_manager,chart.service.contract manager,model_chart_service_contract,group_chart_service_manager,1,1,1,1
+access_task_portal,chart.provisioning.task portal,model_chart_provisioning_task,base.group_portal,1,0,0,0
+access_task_user,chart.provisioning.task user,model_chart_provisioning_task,group_chart_service_user,1,1,1,0
+access_task_manager,chart.provisioning.task manager,model_chart_provisioning_task,group_chart_service_manager,1,1,1,1
+access_period_portal,chart.service.billing.period portal,model_chart_service_billing_period,base.group_portal,1,0,0,0
+access_period_user,chart.service.billing.period user,model_chart_service_billing_period,group_chart_service_user,1,1,1,0
+access_period_manager,chart.service.billing.period manager,model_chart_service_billing_period,group_chart_service_manager,1,1,1,1
+access_contract_internal,chart.service.contract internal read,model_chart_service_contract,base.group_user,1,0,0,0
+access_task_internal,chart.provisioning.task internal read,model_chart_provisioning_task,base.group_user,1,0,0,0
+access_component_portal,chart.service.economic.component portal,model_chart_service_economic_component,base.group_portal,1,0,0,0
+access_component_user,chart.service.economic.component user,model_chart_service_economic_component,group_chart_service_user,1,1,1,0
+access_component_manager,chart.service.economic.component manager,model_chart_service_economic_component,group_chart_service_manager,1,1,1,1
+access_component_internal,chart.service.economic.component internal read,model_chart_service_economic_component,base.group_user,1,0,0,0
