@@ -94,6 +94,43 @@
         </t>
     </template>
 
+    <!-- ============ Confirmación consciente de verificación de correo ============ -->
+    <template id="portal_email_verify_confirm" name="Confirmar verificación de correo">
+        <t t-call="portal.portal_layout">
+            <t t-set="title" t-value="'Verificación de correo'"/>
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <div class="card bg-light mb-3">
+                        <div class="card-header">Confirmar verificación de correo</div>
+                        <div class="card-body">
+                            <p t-if="missing" class="alert alert-warning mb-3">
+                                El enlace está incompleto. Solicita uno nuevo desde tu portal.
+                            </p>
+                            <p t-if="not missing" class="mb-3">
+                                Hola, <strong t-out="contract.partner_id.name or ''"/>. Para
+                                confirmar que el correo
+                                <strong t-out="contract.partner_id.email or ''"/> te pertenece,
+                                pulsa el botón. No se realiza ningún cargo ni activación y no se
+                                expone información del contrato a visitantes sin el enlace.
+                            </p>
+                            <t t-if="not missing">
+                                <form t-att-action="'/my/soluciones/%s/verify' % (contract.id,)"
+                                      method="post" t-att-data-csrf-token="csrf_token">
+                                    <input type="hidden" name="csrf_token"
+                                           t-att-value="request.csrf_token()"/>
+                                    <input type="hidden" name="token" t-att-value="token"/>
+                                    <button type="submit" class="btn btn-primary">
+                                        Confirmar la verificación
+                                    </button>
+                                </form>
+                            </t>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
     <!-- ============================ DETALLE ============================ -->
     <template id="portal_my_solution_detail" name="Detalle de solución">
         <t t-call="portal.portal_layout">
@@ -202,6 +239,111 @@
                     Progreso de preparación del servicio. Los pasos internos del
                     equipo no se publican en el portal.
                 </p>
+            </div>
+
+            <h4 class="mt-4" t-if="contract.provisioning_state != 'none'">
+                Entorno del servicio
+            </h4>
+            <div t-if="contract.provisioning_state != 'none'" class="card bg-light mb-3">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <span class="badge bg-secondary" t-out="contract.provisioning_state"/>
+                            <span t-if="contract.provisioning_ready" class="badge bg-success ms-2">
+                                <i class="fa fa-link"/> Entorno disponible
+                            </span>
+                        </div>
+                        <small class="text-muted">
+                            <t t-if="contract.activation_due_at">
+                                Objetivo: <span t-field="contract.activation_due_at"
+                                               t-options='{"format": "dd/MM/yyyy HH:mm"}'/>
+                            </t>
+                        </small>
+                    </div>
+                    <p class="text-muted small mb-2" t-out="contract.provisioning_progress"/>
+                    <div t-if="contract.provisioning_ready">
+                        <a t-att-href="contract.provisioning_url"
+                           class="btn btn-primary btn-sm"
+                           target="_blank" rel="noopener">
+                            <i class="fa fa-external-link"/> Entrar a mi Odoo
+                        </a>
+                        <p class="text-muted small mt-2">
+                            Acceso seguro con invitación. No se muestran contraseñas en el portal.
+                        </p>
+                    </div>
+                    <div t-if="not contract.provisioning_ready" class="alert alert-info py-2 px-3 mb-0">
+                        <small>
+                            Tu entorno se está preparando. No se muestra acceso hasta que
+                            esté verificado. Los detalles técnicos se gestionan en el backend.
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <h4 class="mt-4" t-if="contract.provisioning_state == 'none'">
+                Entorno del servicio
+            </h4>
+            <div t-if="contract.provisioning_state == 'none'" class="card bg-light mb-3">
+                <div class="card-body p-3">
+                    <p class="text-muted small">
+                        Tu entorno de Odoo 19 se preparará tras la contratación.
+                        Recibirás acceso seguro cuando esté listo.
+                    </p>
+                    <p class="text-muted small mt-2">
+                        <t t-if="contract.activation_due_at">
+                            Fecha objetivo: <span t-field="contract.activation_due_at"
+                                                   t-options='{"format": "dd/MM/yyyy HH:mm"}'/>
+                            (plazo objetivo de 72 horas desde la contratación).
+                        </t>
+                    </p>
+                </div>
+            </div>
+
+            <h4 class="mt-4" t-if="contract.activation_date">
+                Facturación
+            </h4>
+            <div t-if="contract.activation_date" class="card bg-light mb-3">
+                <div class="card-body p-3">
+                    <p class="text-muted small">
+                        <t t-if="contract.periodicity == 'none'">
+                            Cargo único. No hay facturación recurrente.
+                            La activación fue el <span t-field="contract.activation_date"
+                                                       t-options='{"format": "dd/MM/yyyy"}'/>.
+                        </t>
+                        <t t-if="contract.periodicity != 'none'">
+                            Facturación recurrente (<span t-field="contract.periodicity"/>).
+                            La activación fue el <span t-field="contract.activation_date"
+                                                       t-options='{"format": "dd/MM/yyyy"}'/>.
+                            Próxima facturación se calcula desde la activación.
+                            En esta entrega no se emiten facturas reales (piloto).
+                        </t>
+                    </p>
+                    <p class="text-muted small mt-2">
+                        Importes congelados al momento de la contratación.
+                        No se aceptan cobros, timbrado ni envío real en este piloto.
+                    </p>
+                </div>
+            </div>
+
+            <h4 class="mt-4">Datos del cliente</h4>
+            <div class="card bg-light mb-3">
+                <div class="card-body p-3">
+                    <p class="text-muted small">
+                        <t t-if="contract.data_completion_pct >= 100">
+                            <span class="text-success">Todos los datos requeridos completos.</span>
+                        </t>
+                        <t t-else="">
+                            <span class="text-muted">
+                                Completado: <span t-out="contract.data_completion_pct"/>%.
+                                Faltan: <span t-out="contract.data_missing"/>.
+                            </span>
+                        </t>
+                    </p>
+                    <p class="text-muted small mt-2">
+                        Estos datos son necesarios para preparar tu entorno.
+                        Puedes completarlos desde tu perfil.
+                    </p>
+                </div>
             </div>
 
             <h4 class="mt-4">Condiciones de contratación</h4>

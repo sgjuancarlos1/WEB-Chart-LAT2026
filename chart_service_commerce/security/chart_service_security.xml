@@ -33,7 +33,7 @@
     <record id="rule_contract_portal_own" model="ir.rule">
         <field name="name">Contratos: solo el titular autorizado (portal)</field>
         <field name="model_id" ref="model_chart_service_contract"/>
-        <field name="domain_force">['|', ('partner_id', '=', user.partner_id), ('authorized_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="domain_force">['|', ('partner_id', '=', user.partner_id.id), ('authorized_partner_ids', 'in', [user.partner_id.id])]</field>
         <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
         <field name="perm_read" eval="True"/>
         <field name="perm_write" eval="False"/>
@@ -51,7 +51,7 @@
     <record id="rule_task_portal_own" model="ir.rule">
         <field name="name">Tareas: solo las del contrato del titular autorizado (portal, lectura)</field>
         <field name="model_id" ref="model_chart_provisioning_task"/>
-        <field name="domain_force">['|', ('contract_id.partner_id', '=', user.partner_id), ('contract_id.authorized_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="domain_force">['|', ('contract_id.partner_id', '=', user.partner_id.id), ('contract_id.authorized_partner_ids', 'in', [user.partner_id.id])]</field>
         <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
         <field name="perm_read" eval="True"/>
         <field name="perm_write" eval="False"/>
@@ -69,7 +69,7 @@
     <record id="rule_period_portal_own" model="ir.rule">
         <field name="name">Períodos: solo los del contrato del titular autorizado (portal, lectura)</field>
         <field name="model_id" ref="model_chart_service_billing_period"/>
-        <field name="domain_force">['|', ('contract_id.partner_id', '=', user.partner_id), ('contract_id.authorized_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="domain_force">['|', ('contract_id.partner_id', '=', user.partner_id.id), ('contract_id.authorized_partner_ids', 'in', [user.partner_id.id])]</field>
         <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
         <field name="perm_read" eval="True"/>
         <field name="perm_write" eval="False"/>
@@ -91,6 +91,13 @@
     <record id="rule_period_company" model="ir.rule">
         <field name="name">Períodos: por compañía (interno)</field>
         <field name="model_id" ref="model_chart_service_billing_period"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="active" eval="True"/>
+    </record>
+
+    <record id="rule_provisioning_job_company" model="ir.rule">
+        <field name="name">Trabajos de aprovisionamiento: por compañía (interno)</field>
+        <field name="model_id" ref="model_chart_provisioning_job"/>
         <field name="domain_force">[('company_id', 'in', company_ids)]</field>
         <field name="active" eval="True"/>
     </record>

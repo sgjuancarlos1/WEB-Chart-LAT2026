@@ -30,6 +30,10 @@ class ChartProvisioningTask(models.Model):
         string='Tipo de paso', required=True, default='other')
     contract_id = fields.Many2one('chart.service.contract', string='Contrato',
                                   required=True, ondelete='cascade', index=True)
+    job_id = fields.Many2one(
+        'chart.provisioning.job', string='Trabajo de aprovisionamiento',
+        ondelete='set null', index=True,
+        help='Trabajo de aprovisionamiento asociado (si existe).')
     partner_id = fields.Many2one(related='contract_id.partner_id', store=True, index=True)
     company_id = fields.Many2one(related='contract_id.company_id', store=True)
     sequence = fields.Integer(default=10)

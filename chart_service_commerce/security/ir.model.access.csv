@@ -14,3 +14,6 @@ access_component_portal,chart.service.economic.component portal,model_chart_serv
 access_component_user,chart.service.economic.component user,model_chart_service_economic_component,group_chart_service_user,1,1,1,0
 access_component_manager,chart.service.economic.component manager,model_chart_service_economic_component,group_chart_service_manager,1,1,1,1
 access_component_internal,chart.service.economic.component internal read,model_chart_service_economic_component,base.group_user,1,0,0,0
+access_job_user,chart.provisioning.job user,model_chart_provisioning_job,group_chart_service_user,1,1,1,0
+access_job_manager,chart.provisioning.job manager,model_chart_provisioning_job,group_chart_service_manager,1,1,1,1
+access_job_internal,chart.provisioning.job internal read,model_chart_provisioning_job,base.group_user,1,0,0,0

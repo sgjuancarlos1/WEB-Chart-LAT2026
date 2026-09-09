@@ -143,6 +143,12 @@ class ChartServiceContract(models.Model):
     data_missing = fields.Char(
         string='Datos faltantes', compute='_compute_data_complete', store=True)
 
+    data_completion_pct = fields.Float(
+        string='% datos completados', compute='_compute_data_complete',
+        store=True, digits=(3, 1),
+        help='Porcentaje de campos requeridos completados (informativo para el cliente).')
+
+
     # ------------------------------------------------------------ económica
     amount_untaxed = fields.Monetary(string='Base', compute='_compute_amounts', store=True,
                                      currency_field='currency_id')
@@ -220,6 +226,26 @@ class ChartServiceContract(models.Model):
              'El portal comercial y el entorno del cliente son recursos distintos.')
     environment_note = fields.Text(
         string='Nota de comprobación del entorno', readonly=True, copy=False)
+    
+    # ---------------------------------------------------------- aprovisionamiento
+    provisioning_job_id = fields.Many2one(
+        'chart.provisioning.job', string='Trabajo de aprovisionamiento',
+        ondelete='set null', index=True,
+        help='Trabajo de aprovisionamiento que creó el entorno para este contrato.')
+
+    # Campos de conveniencia para el portal (se calculan desde el job)
+    provisioning_state = fields.Char(
+        compute='_compute_provisioning_state', string='Estado de entorno',
+        store=True)
+    provisioning_url = fields.Char(
+        compute='_compute_provisioning_url', string='URL del entorno',
+        store=True)
+    provisioning_ready = fields.Boolean(
+        compute='_compute_provisioning_ready', string='Entorno listo',
+        store=True)
+    provisioning_progress = fields.Text(
+        compute='_compute_provisioning_progress', string='Progreso de entorno',
+        store=True)
 
     # ---------------------------------------------------------- facturación
     billing_period_ids = fields.One2many('chart.service.billing.period', 'contract_id',
@@ -339,6 +365,8 @@ class ChartServiceContract(models.Model):
             }
             contract.data_complete = all(required.values())
             contract.data_missing = ', '.join(k for k, ok in required.items() if not ok)
+            contract.data_completion_pct = round(
+                100.0 * sum(1 for v in required.values() if v) / len(required), 1)
 
     @api.depends('task_ids.state')
     def _compute_task_counts(self):
@@ -799,3 +827,57 @@ class ChartServiceContract(models.Model):
                 'responsible_id': self.env.user.id,
             })
         return tasks
+
+    # ------------------------------------------------------------------ provisioning helpers
+    @api.depends('provisioning_job_id.state', 'provisioning_job_id.environment_url',
+                 'provisioning_job_id.progress_message', 'provisioning_job_id.error_message',
+                 'provisioning_job_id.retries_count', 'provisioning_job_id.max_retries',
+                 'provisioning_job_id.provisioning_done')
+    def _compute_provisioning_state(self):
+        for contract in self:
+            job = contract.provisioning_job_id
+            contract.provisioning_state = job.state if job else 'none'
+
+    @api.depends('provisioning_job_id.environment_url')
+    def _compute_provisioning_url(self):
+        for contract in self:
+            job = contract.provisioning_job_id
+            contract.provisioning_url = job.environment_url if job else False
+
+    @api.depends('provisioning_job_id.state', 'provisioning_job_id.environment_url')
+    def _compute_provisioning_ready(self):
+        # Un trabajo NO está "listo" por tener una URL; exige estado técnico
+        # 'ready' (verificado contra el recurso real) y un destino autorizado.
+        for contract in self:
+            job = contract.provisioning_job_id
+            contract.provisioning_ready = bool(
+                job and job.state == 'ready' and job.environment_url)
+
+    @api.depends('provisioning_job_id.state', 'provisioning_job_id.progress_message',
+                 'provisioning_job_id.error_message', 'provisioning_job_id.retries_count',
+                 'provisioning_job_id.max_retries', 'provisioning_job_id.provisioning_done')
+    def _compute_provisioning_progress(self):
+        for contract in self:
+            job = contract.provisioning_job_id
+            if not job:
+                contract.provisioning_progress = _(
+                    'Aún no se ha iniciado la preparación del entorno.')
+            elif job.state == 'ready':
+                date_str = ''
+                if job.provisioning_done:
+                    date_str = job.provisioning_done.strftime('%d/%m/%Y %H:%M')
+                contract.provisioning_progress = _(
+                    'Entorno creado y verificado el %s.') % date_str
+            elif job.state == 'failed':
+                contract.provisioning_progress = _(
+                    'Error: %s (reintentos: %d/%d)'
+                    ) % (job.error_message or _('Sin detalles'),
+                         job.retries_count, job.max_retries)
+            elif job.state == 'provisioning':
+                contract.provisioning_progress = (
+                    job.progress_message or _('En proceso de creación del entorno...'))
+            elif job.state == 'approved':
+                contract.provisioning_progress = _(
+                    'Aprobado. Esperando inicio de aprovisionamiento.')
+            else:
+                contract.provisioning_progress = _('Estado: %s') % job.state

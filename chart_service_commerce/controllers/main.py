@@ -22,7 +22,7 @@ class WebsiteSaleChart(WebsiteSale):
     """Checkout de servicios: acepta condiciones y confirma sin cobrar."""
 
     @http.route(['/shop/chart/confirm'], type='http', auth='public', website=True,
-                readonly=False, sitemap=False)
+                readonly=False, sitemap=False, methods=['POST'])
     def chart_confirm_contract(self, accept_terms=None, **post):
         """Confirma la contratación SIN iniciar ningún pago.
 
@@ -138,7 +138,7 @@ class CustomerPortalChartSolutions(CustomerPortal):
             contract = self._chart_contract_get(contract_id)
         except MissingError:
             return request.redirect('/my/soluciones')
-        values.update({'contract': contract.sudo(), 'page_name': 'chart_solutions'})
+        values.update({'contract': contract, 'page_name': 'chart_solutions'})
         return request.render('chart_service_commerce.portal_my_solution_detail', values)
 
     def _chart_contract_get(self, contract_id):
@@ -157,30 +157,44 @@ class CustomerPortalChartSolutions(CustomerPortal):
         return request.env[model_name]
 
     @http.route(['/my/soluciones/<int:contract_id>/verify'], type='http',
-                auth='public', website=True, sitemap=False)
+                auth='public', website=True, sitemap=False, methods=['GET'])
     def portal_verify_email(self, contract_id, token=None, **kw):
-        """Verifica el email desde el enlace del correo (token de un solo uso).
+        """Presenta la confirmación de verificación (GET NO verifica ni consume).
 
-        - auth='public': el cliente puede abrir el enlace sin sesión.
-        - El token se valida en servidor (un solo uso, vigente).
-        - NO activa ningún servicio: solo confirma la verificación y muestra una
-          página de confirmación. Un escáner automático de correo no activa nada.
-        - El token nunca se expone en la página ni en logs.
+        Un escáner automático de correo que abra el enlace por GET NO marca el
+        correo como verificado: sólo muestra una página con un formulario POST
+        que el cliente envía conscientemente.
         """
         contract = request.env['chart.service.contract'].sudo().browse(
             int(contract_id)).exists()
         if not contract:
             return request.not_found()
+        return request.render('chart_service_commerce.portal_email_verify_confirm', {
+            'contract': contract,
+            'token': token or '',
+            'missing': not token,
+        })
+
+    @http.route(['/my/soluciones/<int:contract_id>/verify'], type='http',
+                auth='public', website=True, sitemap=False, methods=['POST'])
+    def portal_verify_email_post(self, contract_id, token=None, **kw):
+        """Confirma la verificación por POST (consentimiento consciente)."""
+        contract = request.env['chart.service.contract'].sudo().browse(
+            int(contract_id)).exists()
+        if not contract:
+            return request.not_found()
         error = False
+        verified = False
         if not token:
             error = _('Falta el enlace de verificación.')
         else:
             try:
-                contract.sudo().action_verify_email(token)
+                contract.action_verify_email(token)
+                verified = bool(contract.email_verified)
             except UserError as e:
                 error = e.args[0] if e.args else _('No se pudo verificar el email.')
         return request.render('chart_service_commerce.portal_email_verify_result', {
             'contract': contract,
             'error': error,
-            'verified': bool(contract.email_verified),
+            'verified': verified,
         })
