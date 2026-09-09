@@ -16,7 +16,9 @@ Seguridad:
   propiedad exacta; cancelar/resetear NO borra recursos.
 - No ejecuta shell ni interpola datos del cliente en comandos.
 """
+import json
 import logging
+import os
 import re
 
 from odoo import _, api, fields, models
@@ -27,6 +29,28 @@ _logger = logging.getLogger(__name__)
 _DB_NAME_RE = re.compile(r'^chart_env_[a-z0-9]{12}$')
 _PROVISIONING_PARAM = 'chart_service_commerce.provisioning_enabled'
 _DELETE_PARAM = 'chart_service_commerce.delete_environment_authorized'
+
+# Estados del contrato en los que la preparación TÉCNICA puede comenzar (la
+# comprobación/activación del entorno NO es prerrequisito del job).
+_JOB_APPROVABLE_CONTRACT_STATES = (
+    'pending_preparation',
+    'in_preparation',
+    'pending_environment_check',
+    'pending_activation_approval',
+    'active',
+)
+
+# Identificador PostgreSQL válido para el rol propietario de la base destino.
+_DB_OWNER_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_$]{0,62}$')
+
+# Ejecutor Odoo del ENTORNO (binario/config/data_dir dedicados). Sin esta
+# configuración no se instala, configura ni verifica nada sobre la base
+# destino: el job falla con un error accionable (nunca finge éxito).
+_EXEC_BIN_PARAM = 'chart_service_commerce.environment_executor_bin'
+_EXEC_CONFIG_PARAM = 'chart_service_commerce.environment_executor_config'
+_EXEC_DATA_DIR_PARAM = 'chart_service_commerce.environment_executor_data_dir'
+_EXEC_INIT_TIMEOUT = 3600
+_EXEC_SHELL_TIMEOUT = 600
 
 
 class ChartProvisioningJob(models.Model):
@@ -221,9 +245,26 @@ class ChartProvisioningJob(models.Model):
         self._ensure_manager()
         if self.state not in ('draft', 'pending'):
             raise UserError(_('Solo se puede aprobar un trabajo en estado borrador o pendiente.'))
-        if self.contract_id.state not in ('pending_activation_approval', 'active'):
-            raise UserError(_('El contrato no está listo para aprovisionamiento.'))
+        # DEPENDENCIA CIRCULAR RESUELTA: la preparación TÉCNICA (job) puede
+        # comenzar antes de comprobar/activar el entorno. Sólo se exige que la
+        # contratación esté confirmada y no cancelada/en pausa/borrador: el
+        # entorno se comprueba y el contrato se activa DESPUÉS por la política
+        # comercial y el responsable, nunca por el job.
+        if self.contract_id.state not in _JOB_APPROVABLE_CONTRACT_STATES:
+            raise UserError(_(
+                'El contrato está en %s. La preparación técnica solo comienza '
+                'tras la contratación confirmada y antes o durante la activación '
+                'comercial (nunca en borrador, pausa o cancelación).',
+                dict(self.contract_id._fields['state'].selection)[self.contract_id.state]))
 
+        # Exclusión EFECTIVA entre DOS JOBS del mismo contrato (y no solo por el
+        # índice único de idempotent_key): la aprobación se serializa en la fila
+        # del contrato. Dos ejecutores concurrentes no pueden leer "no existe
+        # otro job activo" a la vez: el segundo espera al candado y relee el
+        # resultado del primero en la misma transacción.
+        self.env.cr.execute(
+            'SELECT id FROM "chart_service_contract" WHERE id = %s FOR UPDATE',
+            (self.contract_id.id,))
         existing = self.search([
             ('contract_id', '=', self.contract_id.id),
             ('state', 'in', ('approved', 'provisioning', 'ready')),
@@ -257,10 +298,22 @@ class ChartProvisioningJob(models.Model):
         """
         self.ensure_one()
         self._ensure_user()
-        if self.state != 'approved':
-            raise UserError(_('Solo se puede iniciar un trabajo aprobado.'))
         if not self.database_name:
             raise UserError(_('El trabajo no tiene base de datos asignada.'))
+
+        # Exclusión EFECTIVA entre DOS EJECUTORES del mismo job: la ejecución
+        # se serializa en la fila del trabajo. El segundo ejecutor espera aquí
+        # y, al adquirir el candado, relee el estado REAL (READ COMMITTED) en
+        # lugar de confiar en la caché previa a la espera.
+        self.env.cr.execute(
+            'SELECT id FROM "chart_provisioning_job" WHERE id = %s FOR UPDATE',
+            (self.id,))
+        self.invalidate_recordset(
+            ['state', 'error_message', 'progress_message', 'retries_count'])
+        if self.state != 'approved':
+            raise UserError(_(
+                'Otro ejecutor ya está preparando o completó este trabajo '
+                '(estado: %s).', self.state))
 
         self.write({
             'state': 'provisioning',
@@ -284,7 +337,20 @@ class ChartProvisioningJob(models.Model):
             self._mark_failed(_('Error interno durante la preparación del entorno.'))
             return False
 
-        ok, detail = self._verify_environment()
+        # La verificación también se protege con savepoint: un fallo o timeout
+        # en _verify_environment (p. ej. red/SQL) NO aborta la transacción sin
+        # persistir: se recupera la conexión y se registra ``failed`` igual que
+        # cualquier otra fase del aprovisionamiento.
+        try:
+            with self.env.cr.savepoint():
+                ok, detail = self._verify_environment()
+        except UserError as e:
+            self._mark_failed(e.args[0] if e.args else _('No se pudo verificar el entorno.'))
+            return False
+        except Exception:
+            _logger.exception('Fallo de verificación del entorno del trabajo %s', self.id)
+            self._mark_failed(_('Error interno durante la verificación del entorno.'))
+            return False
         if not ok:
             self._mark_failed(detail or _('El entorno no pasó la verificación de disponibilidad.'))
             return False
@@ -317,10 +383,13 @@ class ChartProvisioningJob(models.Model):
         self._validate_database_identifier(db_name)
         # RECONCILIACIÓN: si una caída ocurrió DESPUÉS de crear la base (DDL en
         # autocommit, fuera de la transacción), el recurso ya existe. Reintentar
-        # NO debe duplicarlo ni fallar: se reutiliza el recurso identificado.
+        # NO debe duplicarlo ni fallar: se reutiliza el recurso identificado
+        # (solo si el marcador de propiedad demuestra que es de esta operación).
         self._create_database(db_name)
-        self._install_modules_in_database(db_name)
+        # El filestore se asegura ANTES de la inicialización para que el
+        # ejecutor escriba en su data_dir dedicado desde el primer arranque.
         self._create_filestore(db_name)
+        self._install_modules_in_database(db_name)
         self._post_provisioning_setup()
 
     def _create_database(self, db_name):
@@ -328,79 +397,350 @@ class ChartProvisioningJob(models.Model):
 
         ``CREATE DATABASE`` (PostgreSQL 16) no cabe en el bloque transaccional
         del negocio; se abre una conexión separada a la base administrativa y
-        SÓLO ahí se usa autocommit para el DDL autorizado. El identificador se
-        compone con ``psycopg2.sql.Identifier``; el cursor del negocio JAMÁS
-        se pone en autocommit.
+        SÓLO ahí se usa autocommit para el DDL autorizado.
+
+        Correcciones frente a la revisión:
+        - El propietario (OWNER) también es un IDENTIFICADOR y se compone con
+          ``psycopg2.sql.Identifier`` (nunca como parámetro literal %s) a
+          partir de un rol explícitamente configurado; sin rol no se adivina.
+        - Una conexión separada al mismo PostgreSQL NO representa un ejecutor
+          con privilegios separados: la creación usa las credenciales de la
+          configuración actual y falla si no tiene el privilegio real.
+        - Una coincidencia de NOMBRE no acredita propiedad: tras crear, se
+          estampa un marcador de propiedad (COMMENT ON DATABASE) con la
+          identidad del trabajo. Reutilizar una base existente exige que el
+          marcador coincida; si no, se rechaza (no se adopta un recurso ajeno).
         """
         if self._db_exists(db_name):
-            # Reconciliación idempotente: el recurso ya existe con ESTA
-            # identidad (misma operación reintentada). No se duplica y no se
-            # considera error: se continúa con el recurso existente.
+            # Reconciliación SOLO si la propiedad es demostrable. Una base con
+            # el mismo nombre pero sin nuestro marcador (o con otro) no se
+            # adopta: la identidad se registró ANTES del efecto externo y el
+            # reintento conserva exactamente la misma operación.
+            self._ensure_database_ownership(db_name)
             _logger.info(
-                'La base %s ya existe (reintento de la misma operación): se '
+                'La base %s ya existe y su marcador de propiedad coincide: se '
                 'reconcilia sin duplicar.', db_name)
             return
         from psycopg2 import sql as psy_sql
         from odoo import sql_db
+        owner = self._environment_db_owner()
+        if not owner:
+            raise UserError(_(
+                'No hay un rol propietario configurado para la base destino '
+                '(param chart_service_commerce.environment_db_owner). No se '
+                'adivina el propietario.'))
         conn = sql_db.db_connect('postgres')
         try:
             with conn.cursor(autocommit=True) as cr:
                 cr.execute(
-                    psy_sql.SQL('CREATE DATABASE {} WITH OWNER = %s ENCODING = %s')
-                    .format(psy_sql.Identifier(db_name)),
-                    ('odoo', 'UTF8'))
+                    psy_sql.SQL('CREATE DATABASE {} WITH OWNER = {} ENCODING = {}')
+                    .format(
+                        psy_sql.Identifier(db_name),
+                        psy_sql.Identifier(owner),
+                        psy_sql.SQL("'UTF8'")))
+                # Estampa de propiedad tras el efecto externo: la identidad del
+                # trabajo ya quedó registrada en el job antes de crear.
+                cr.execute(
+                    psy_sql.SQL('COMMENT ON DATABASE {} IS {}').format(
+                        psy_sql.Identifier(db_name),
+                        psy_sql.Literal(self._database_marker())))
         finally:
             conn.close()
 
-    def _install_modules_in_database(self, db_name):
-        """Instala los módulos del alcance explícito en la NUEVA base (adaptador).
+    def _environment_db_owner(self):
+        """Rol propietario de la base destino (config explícita, sin hardcode)."""
+        param = self.env['ir.config_parameter'].sudo().get_param(
+            'chart_service_commerce.environment_db_owner', '')
+        owner = str(param or '').strip()
+        if owner and not _DB_OWNER_RE.match(owner):
+            raise UserError(_(
+                '%r no es un identificador de rol PostgreSQL válido.', owner))
+        return owner
 
-        Marca la lista en ``included_module_ids`` y el resumen. La instalación
-        real se delega al ejecutor Odoo contra la base destino (autorizado por
-        ``_provisioning_enabled``); no se confunden IDs de módulos de la base
-        comercial con la base destino.
+    def _database_marker(self):
+        """Marcador de propiedad de la operación (identidad, sin secretos)."""
+        return 'chart_provisioning:%s' % (self.idempotent_key or '')
+
+    def _read_database_comment(self, db_name):
+        """Comentario (marcador) de la base, lectura directa de pg_catalog."""
+        self._validate_database_identifier(db_name)
+        self.env.cr.execute(
+            "SELECT pg_catalog.shobj_description(d.oid, 'pg_database') "
+            'FROM pg_catalog.pg_database d WHERE datname = %s', (db_name,))
+        row = self.env.cr.fetchone()
+        return (row[0] or '') if row else ''
+
+    def _ensure_database_ownership(self, db_name):
+        """Verifica la propiedad ANTES de adoptar un recurso ya existente.
+
+        El marcador debe coincidir EXACTAMENTE con la identidad de esta
+        operación. Un nombre coincidente sin marcador, o con el marcador de
+        otra operación, se rechaza: la reconciliación nunca adopta recursos
+        ajenos ni borra la evidencia de una operación distinta.
+        """
+        if not self._db_exists(db_name):
+            return False
+        expected = self._database_marker()
+        comment = self._read_database_comment(db_name)
+        if not comment:
+            raise UserError(_(
+                'La base %s ya existe pero NO tiene marcador de propiedad de '
+                'aprovisionamiento. No se adopta un recurso ajeno por '
+                'coincidencia de nombre.', db_name))
+        if comment != expected:
+            raise UserError(_(
+                'La base %s ya existe y su marcador (%s) no corresponde a esta '
+                'operación (%s). Revisa manualmente la propiedad del recurso.',
+                db_name, comment[:80], expected))
+        return True
+
+    # ------------------------------------------------------------------ ejecutor
+    def _executor_config(self):
+        """Configuración del ejecutor Odoo del ENTORNO (binario/config/data_dir).
+
+        El ejecutor es el proceso Odoo aislado que inicializa la base destino
+        con su propia configuración (dbfilter propio, filestore dedicado). Sin
+        binario/config el job falla con un error accionable: ninguna operación
+        se simula ni se da por hecha sin el ejecutor real.
+        """
+        ICP = self.env['ir.config_parameter'].sudo()
+        return {
+            'bin': str(ICP.get_param(_EXEC_BIN_PARAM, '') or '').strip(),
+            'config': str(ICP.get_param(_EXEC_CONFIG_PARAM, '') or '').strip(),
+            'data_dir': str(ICP.get_param(_EXEC_DATA_DIR_PARAM, '') or '').strip(),
+        }
+
+    def _require_executor(self, reason):
+        cfg = self._executor_config()
+        if not cfg['bin'] or not cfg['config']:
+            raise UserError(_(
+                '%s No hay ejecutor Odoo del entorno configurado (parámetros '
+                '%s y %s). Sin esa configuración dedicada no se realiza ninguna '
+                'operación sobre la base destino y el trabajo no continúa.',
+                reason, _EXEC_BIN_PARAM, _EXEC_CONFIG_PARAM))
+        return cfg
+
+    def _run_env_odoo(self, db_name, extra_args, timeout=None, stdin_text=None,
+                      env_extra=None):
+        """Ejecuta el binario Odoo del ENTORNO contra la base destino.
+
+        - Argumentos como LISTA (sin shell): los datos del cliente jamás se
+          interpolan en un comando.
+        - La base debe cumplir el patrón aislado ``chart_env_``.
+        - Devuelve (returncode, salida combinada acotada para el registro).
+        """
+        import subprocess
+        self._validate_database_identifier(db_name)
+        cfg = self._require_executor('Ejecución del entorno %s.' % db_name)
+        cmd = [cfg['bin'], '--config', cfg['config'], '-d', db_name,
+               '--no-http', '--stop-after-init'] + list(extra_args)
+        _env = dict(os.environ)
+        if env_extra:
+            _env.update(env_extra)
+        proc = subprocess.run(
+            cmd, input=stdin_text, capture_output=True, text=True, env=_env,
+            timeout=timeout or _EXEC_INIT_TIMEOUT)
+        out = ((proc.stdout or '') + (proc.stderr or ''))[-4000:]
+        return proc.returncode, out
+
+    def _install_modules_in_database(self, db_name):
+        """Instala en la NUEVA base los módulos del alcance explícito.
+
+        Conserva la lista/resumen como trazabilidad y DELEGA la instalación
+        real al ejecutor Odoo del entorno (la base ya existe y es propiedad
+        verificada de esta operación). Un returncode distinto de 0 aborta: el
+        entorno no queda listo si la instalación falló o no se ejecutó.
         """
         modules = self._get_allowed_modules_for_version()
+        names = sorted({m.name for m in modules
+                        if m.name and re.fullmatch(r'[a-z0-9_]+', m.name)})
+        if not names:
+            raise UserError(_('No hay módulos del alcance explícito para instalar.'))
         self.included_module_ids = [(6, 0, modules.ids)]
         self.initial_config_summary = self._get_initial_config_summary()
+        self._require_executor('Instalación de módulos en %s.' % db_name)
+        rc, out = self._run_env_odoo(
+            db_name, ['-i', ','.join(names)], timeout=_EXEC_INIT_TIMEOUT)
+        if rc != 0:
+            raise UserError(_(
+                'El ejecutor no pudo instalar los módulos en %s (código %s). '
+                'El entorno NO queda disponible.', db_name, rc))
+        _logger.info('Módulos instalados en %s por el ejecutor del entorno.', db_name)
 
     def _create_filestore(self, db_name):
-        """Crea el filestore aislado de la base destino (adaptador)."""
-        import os
-        from odoo.tools import config
-        base = config.get('data_dir')
+        """Asegura el filestore de la base destino en el data_dir del EJECUTOR.
+
+        El filestore del entorno pertenece al data_dir dedicado del ejecutor,
+        NO al data_dir del proceso que corre el job. Sin data_dir de ejecutor
+        configurado no se crea un filestore huérfano en el directorio del job.
+        """
+        self._validate_database_identifier(db_name)
+        cfg = self._require_executor('Creación del filestore de %s.' % db_name)
+        base = cfg['data_dir']
+        if not base:
+            raise UserError(_(
+                'Sin data_dir de ejecutor (%s) no se crea el filestore del '
+                'entorno.', _EXEC_DATA_DIR_PARAM))
         fstore = os.path.join(base, 'filestore', db_name)
         os.makedirs(fstore, exist_ok=True)
 
     def _post_provisioning_setup(self):
-        """Configuración inicial tras crear la base (empresa/usuario/permisos).
+        """Configura empresa, usuario e invitación en la base destino (adaptador).
 
-        La inicialización limpia de Odoo, la empresa, el usuario cliente, los
-        permisos y la invitación se aplican contra la base destino una vez
-        autorizada; aquí sólo se conserva el resumen de configuración.
+        Ejecuta el script de inicialización dedicado del módulo dentro del
+        ejecutor (``odoo shell`` contra la base destino) con el payload por
+        variable de entorno en JSON: nada de datos del cliente entra en un
+        comando. Conserva en el job el resultado devuelto por el script
+        (usuario administrador, token y expiración de la invitación). Si el
+        script falla o no devuelve un resultado completo, el trabajo falla.
         """
+        db_name = self.database_name
+        self._validate_database_identifier(db_name)
+        self._require_executor('Configuración inicial de %s.' % db_name)
         self.initial_config_summary = self._get_initial_config_summary()
+        payload = self._environment_setup_payload()
+        script = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            '..', 'data', 'environment_setup.py')
+        if not os.path.isfile(script):
+            raise UserError(_('No se encontró el script de inicialización del entorno.'))
+        with open(script, encoding='utf-8') as fh:
+            script_text = fh.read()
+        rc, out = self._run_env_odoo(
+            db_name, ['shell'], timeout=_EXEC_SHELL_TIMEOUT,
+            stdin_text=script_text,
+            env_extra={'CHART_ENV_SETUP_JSON': json.dumps(payload)})
+        if rc != 0:
+            raise UserError(_(
+                'El ejecutor no pudo configurar %s (código %s). El entorno NO '
+                'queda disponible.', db_name, rc))
+        result = self._parse_env_result(out)
+        if not result:
+            raise UserError(_(
+                'El ejecutor terminó sin devolver el resultado de la '
+                'configuración de %s.', db_name))
+        self.write({
+            'admin_username': result.get('admin_username') or False,
+            'invitation_token': result.get('invitation_token') or False,
+            'invitation_expires': result.get('invitation_expires') or False,
+        })
+
+    def _environment_setup_payload(self):
+        """Payload JSON del setup (sin secretos en metadata del job).
+
+        Incluye ``environment_url`` porque el reporte post-setup del ejecutor
+        debe acreditar el MISMO destino autorizado de este trabajo; sin ese
+        dato el ejecutor no puede dejar el reporte que ``_verify_environment``
+        exige (y la verificación nunca pasaría aunque todo lo demás esté bien).
+        """
+        partner = self.contract_id.partner_id
+        company = partner.commercial_partner_id or partner
+        return {
+            'company_name': (company.name or _('Empresa Cliente')).strip()[:120],
+            'company_email': (company.email or '').strip()[:120],
+            'admin_login': (self.idempotent_key or 'admin').strip(),
+            'admin_email': (partner.email or '').strip()[:120],
+            'admin_name': (partner.name or _('Cliente')).strip()[:120],
+            'admin_password': self._new_env_secret(),
+            'allowed_users': max(int(self.allowed_user_count or 5), 1),
+            'database_name': self.database_name,
+            'environment_url': self.environment_url or False,
+        }
+
+    def _new_env_secret(self):
+        """Contraseña temporal aleatoria para el administrador del entorno.
+
+        Se entrega al responsable por el canal seguro existente; no se
+        persiste en metadata del job ni en logs.
+        """
+        import secrets
+        return secrets.token_urlsafe(24)
+
+    def _parse_env_result(self, output):
+        """Extrae la línea ``CHART_ENV_RESULT: {json}`` de la salida del script."""
+        marker = 'CHART_ENV_RESULT:'
+        for line in (output or '').splitlines():
+            if marker in line:
+                try:
+                    return json.loads(line.split(marker, 1)[1].strip())
+                except (ValueError, TypeError):
+                    return {}
+        return {}
 
     def _verify_environment(self):
         """Verificación REAL de disponibilidad del recurso (criterio de READY).
 
         Devuelve (ok, detalle). Un HTTP 200 de la base comercial, una URL
-        construida o una carpeta de filestore NO cumplen. Sin la autorización
-        de infraestructura la comprobación objetiva no es posible y el entorno
-        no puede quedar ``ready``.
+        construida, un filestore vacío o un 200 de error NO cumplen. Sin
+        autorización de infraestructura la comprobación objetiva no es posible
+        y el entorno nunca queda ``ready``.
+
+        Comprobaciones (todas deben pasar en un despliegue autorizado):
+        1. Parámetro de infraestructura habilitado.
+        2. La base destino existe y su marcador de propiedad coincide con esta
+           operación (coincidencia de nombre NO basta).
+        3. Hay un destino (environment_url) en un dominio enrutado autorizado
+           (lista de dominios explícita; sin lista no hay enrutamiento seguro).
+        4. El ejecutor dejó un reporte de verificación post-setup con Odoo
+           inicializado, módulos instalados, empresa configurada, usuario con
+           permisos y filestore accesible.
+        5. El reporte corresponde al destino exacto de este trabajo (no se
+           reescribe el destino para hacer pasar la demostración).
         """
         if not self._provisioning_enabled():
             return False, _('No se puede verificar el entorno sin autorización de infraestructura.')
-        if not self._db_exists(self.database_name):
+        db_name = self.database_name
+        if not db_name or not _DB_NAME_RE.match(db_name or ''):
+            return False, _('El trabajo no tiene una identidad de recurso válida.')
+        if not self._db_exists(db_name):
             return False, _('La base de datos del entorno no existe.')
+        try:
+            self._ensure_database_ownership(db_name)
+        except UserError as e:
+            return False, (e.args[0] if e.args else _('El recurso no pertenece a esta operación.'))
         if not self.environment_url:
             return False, _('El entorno no tiene un destino autorizado.')
-        # En un entorno autorizado se comprueba: Odoo inicializado, módulos
-        # requeridos instalados, empresa configurada, usuario con permisos,
-        # aislamiento de datos, filestore accesible por el servicio, host
-        # enrutado a SU PROPIA base, HTTPS válido e invitación segura útil.
-        return False, _('La verificación objetiva de disponibilidad está pendiente '
-                        'de infraestructura autorizada.')
+        allowed = self.env['ir.config_parameter'].sudo().get_param(
+            'chart_service_commerce.allowed_environment_domains', '')
+        if not allowed.strip():
+            return False, _('No hay dominios de entorno autorizados configurados.')
+        from urllib.parse import urlparse
+        parsed = urlparse(self.environment_url)
+        host = (parsed.hostname or '').lower()
+        allowed_hosts = {h.strip().lower() for h in allowed.split(',') if h.strip()}
+        if not any(host == h or host.endswith('.' + h) for h in allowed_hosts):
+            return False, _('El destino %s no está en los dominios autorizados.', self.environment_url)
+        report = self._environment_report(db_name)
+        if not report:
+            return False, _('El ejecutor no dejó el reporte de verificación post-setup.')
+        required = ('odoo_initialized', 'modules_installed', 'company_configured',
+                    'user_created', 'filestore_ready', 'invitation_ok')
+        missing = [k for k in required if not report.get(k)]
+        if missing:
+            return False, _('El reporte de verificación no acredita: %s.',
+                            ', '.join(missing))
+        if report.get('environment_url') != self.environment_url:
+            return False, _('El reporte verificado no corresponde al destino exacto de este trabajo.')
+        return True, _('Entorno verificado: Odoo inicializado, módulos instalados, '
+                       'empresa y usuario configurados y filestore accesible.')
+
+    def _environment_report(self, db_name):
+        """Reporte de verificación post-setup escrito por el EJECUTOR.
+
+        Ruta: <data_dir del ejecutor>/chart_env_reports/<db_name>.json. Es un
+        artefacto del ejecutor (no del job): su presencia acredita que la
+        inicialización terminó correctamente en la base destino.
+        """
+        cfg = self._executor_config()
+        if not cfg['data_dir']:
+            return {}
+        report_path = os.path.join(
+            cfg['data_dir'], 'chart_env_reports', '%s.json' % db_name)
+        try:
+            with open(report_path, encoding='utf-8') as fh:
+                return json.load(fh)
+        except (IOError, OSError, ValueError):
+            return {}
 
     def action_retry(self):
         """Reintenta tras fallo (responsable). Conserva la misma identidad."""
