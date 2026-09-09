@@ -10,7 +10,8 @@ Una solución puede tener implementación (único) + mensualidad (recurrente):
 cada línea de pedido se clasifica por separado según la periodicidad de su
 producto. No se clasifica todo el contrato como único o recurrente.
 """
-from odoo import fields, models
+from odoo import _, api, fields, models
+from odoo.exceptions import ValidationError
 
 
 class ChartServiceEconomicComponent(models.Model):
@@ -21,39 +22,63 @@ class ChartServiceEconomicComponent(models.Model):
     contract_id = fields.Many2one(
         'chart.service.contract', string='Contrato', required=True,
         ondelete='cascade', index=True)
+    company_id = fields.Many2one(
+        related='contract_id.company_id', store=True, index=True,
+        string='Compañía')
     sequence = fields.Integer(string='Orden', default=10)
     order_line_id = fields.Many2one(
-        'sale.order.line', string='Línea de pedido origen', required=True,
-        ondelete='restrict', index=True)
+        'sale.order.line', string='Línea de pedido origen (procedencia)',
+        required=True, ondelete='restrict', index=True)
+
+    # SNAPSHOT INMUTABLE: valores congelados al momento de contratar. NO son
+    # campos related: si la línea de pedido origen cambiara después de la
+    # confirmación, el componente NO cambia (así se demuestra en tests).
     product_id = fields.Many2one(
-        'product.product', string='Variante', related='order_line_id.product_id',
-        store=True, readonly=True)
-    name = fields.Text(string='Descripción', related='order_line_id.name',
-                       store=True, readonly=True)
-    quantity = fields.Float(
-        string='Cantidad', related='order_line_id.product_uom_qty', store=True,
-        readonly=True)
-    uom_id = fields.Many2one(
-        'uom.uom', string='Unidad', related='order_line_id.product_uom_id',
-        store=True, readonly=True)
+        'product.product', string='Variante', readonly=True)
+    name = fields.Text(string='Descripción', readonly=True)
+    quantity = fields.Float(string='Cantidad', readonly=True)
+    uom_id = fields.Many2one('uom.uom', string='Unidad', readonly=True)
     price_unit = fields.Float(
-        string='Precio unitario aceptado', related='order_line_id.price_unit',
-        store=True, readonly=True)
-    discount = fields.Float(
-        string='Descuento (%)', related='order_line_id.discount', store=True,
-        readonly=True)
+        string='Precio unitario aceptado', readonly=True)
+    discount = fields.Float(string='Descuento (%)', readonly=True)
     price_subtotal = fields.Monetary(
-        string='Subtotal', related='order_line_id.price_subtotal', store=True,
-        readonly=True, currency_field='currency_id')
+        string='Subtotal', readonly=True, currency_field='currency_id')
     price_total = fields.Monetary(
-        string='Total', related='order_line_id.price_total', store=True,
-        readonly=True, currency_field='currency_id')
+        string='Total', readonly=True, currency_field='currency_id')
     tax_ids = fields.Many2many(
-        'account.tax', string='Impuestos', related='order_line_id.tax_ids',
-        readonly=True)
+        'account.tax', string='Impuestos', readonly=True)
     currency_id = fields.Many2one(
-        'res.currency', string='Moneda', related='order_line_id.currency_id',
-        store=True, readonly=True)
+        'res.currency', string='Moneda', readonly=True)
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Congela los valores de la línea origen SOLO en la creación."""
+        Line = self.env['sale.order.line']
+        for vals in vals_list:
+            line = Line.browse(vals['order_line_id'])
+            vals.setdefault('product_id', line.product_id.id)
+            vals.setdefault('name', line.name)
+            vals.setdefault('quantity', line.product_uom_qty)
+            vals.setdefault('uom_id', line.product_uom_id.id)
+            vals.setdefault('price_unit', line.price_unit)
+            vals.setdefault('discount', line.discount)
+            vals.setdefault('price_subtotal', line.price_subtotal)
+            vals.setdefault('price_total', line.price_total)
+            vals.setdefault('tax_ids', [(6, 0, line.tax_ids.ids)])
+            vals.setdefault('currency_id', line.currency_id.id)
+        return super().create(vals_list)
+
+    def write(self, vals):
+        """Los valores congelados no se reescriben: el snapshot es inmutable."""
+        immutable = {'product_id', 'name', 'quantity', 'uom_id', 'price_unit',
+                     'discount', 'price_subtotal', 'price_total', 'tax_ids',
+                     'currency_id', 'order_line_id'}
+        if immutable.intersection(vals):
+            raise ValidationError(_(
+                "Los componentes económicos son un snapshot congelado en la "
+                "contratación: no se editan. Crea un contrato nuevo si cambian "
+                "las condiciones."))
+        return super().write(vals)
     # Clasificación del cargo: único o recurrente (según la periodicidad del
     # producto de la línea). Cada línea se clasifica por separado.
     charge_type = fields.Selection(

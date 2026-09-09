@@ -3,3 +3,7 @@ from . import test_billing_periods
 from . import test_portal_security
 from . import test_email_verification
 from . import test_provisioning_job
+from . import test_security_hardening
+from . import test_provisioning_recovery
+from . import test_economics
+from . import test_portal_completion

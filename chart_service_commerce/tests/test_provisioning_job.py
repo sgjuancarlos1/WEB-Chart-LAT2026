@@ -39,8 +39,9 @@ class TestProvisioningJob(ChartContractCommon):
         contract = order.chart_contract_ids
         self.assertEqual(contract.state, 'pending_preparation')
         # El objetivo de este test es el JOB, no el flujo del contrato: se deja
-        # el contrato en 'active' de forma explícita y trazada (test aislado).
-        contract.with_user(manager).write({'state': 'active'})
+        # el contrato en 'active' de forma explícita y trazada por el admin
+        # (único responsable autorizado para activar en servidor).
+        contract.with_user(self.env.ref('base.user_admin')).write({'state': 'active'})
         return contract
 
     def _make_approved_job(self):

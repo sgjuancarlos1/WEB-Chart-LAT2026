@@ -33,6 +33,14 @@ class ChartContractCommon(WebsiteSaleCommon):
             'taxes_id': [(5, 0, 0)],
             'website_published': True,
         })
+        cls.test_normal_product = cls.env['product.template'].create({
+            'name': 'PRODUCTO ORDINARIO DE PRUEBA (test)',
+            'type': 'consu',
+            'is_chart_service': False,
+            'list_price': 99.0,
+            'taxes_id': [(5, 0, 0)],
+            'website_published': True,
+        })
         cls.test_variant_product = cls.env['product.template'].create({
             'name': 'SERVICIO CON VARIANTES Chart (test)',
             'type': 'service',

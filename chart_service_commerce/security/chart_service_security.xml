@@ -21,8 +21,9 @@
         <field name="name">Responsable de servicios</field>
         <field name="privilege_id" ref="privilege_chart_services"/>
         <field name="implied_ids" eval="[(4, ref('group_chart_service_user'))]"/>
+        <field name="user_ids" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
         <field name="comment">Único grupo que puede aprobar la activación real de un
-            contrato (activación asistida).</field>
+            contrato (activación asistida) y leer los tokens de verificación.</field>
     </record>
 
     <!-- =====================================================================
@@ -80,12 +81,19 @@
     <record id="rule_component_portal_own" model="ir.rule">
         <field name="name">Componentes: solo los del contrato del titular autorizado (portal, lectura)</field>
         <field name="model_id" ref="model_chart_service_economic_component"/>
-        <field name="domain_force">['|', ('contract_id.partner_id', '=', user.partner_id), ('contract_id.authorized_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="domain_force">['|', ('contract_id.partner_id', '=', user.partner_id.id), ('contract_id.authorized_partner_ids', 'in', [user.partner_id.id])]</field>
         <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
         <field name="perm_read" eval="True"/>
         <field name="perm_write" eval="False"/>
         <field name="perm_create" eval="False"/>
         <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="rule_component_company" model="ir.rule">
+        <field name="name">Componentes económicos: por compañía (interno)</field>
+        <field name="model_id" ref="model_chart_service_economic_component"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="active" eval="True"/>
     </record>
 
     <record id="rule_period_company" model="ir.rule">

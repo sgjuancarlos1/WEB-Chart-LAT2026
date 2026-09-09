@@ -131,7 +131,10 @@ class ChartServiceContract(models.Model):
         help='Dirección de correo que realmente se verificó (evidencia).')
     email_verification_token = fields.Char(
         string='Token de verificación', copy=False, readonly=True, index=True,
-        help='Token aleatorio de un solo uso. Nunca se muestra en el portal ni en logs.')
+        groups='chart_service_commerce.group_chart_service_manager',
+        help='Token aleatorio de un solo uso. Nunca se muestra en el portal ni en '
+             'logs. Solo es legible para el responsable de servicios: ni el portal '
+             'ni un usuario interno ordinario pueden leerlo por RPC.')
     email_verification_token_expiry = fields.Datetime(
         string='Token válido hasta', readonly=True, copy=False)
     email_verification_sent_at = fields.Datetime(
@@ -484,7 +487,7 @@ class ChartServiceContract(models.Model):
         o recurrente (mensual/trimestral/anual). Una solución con implementación
         + mensualidad genera dos componentes. Idempotente.
         """
-        Component = self.env['chart.service.economic.component']
+        Component = self.env['chart.service.economic.component'].sudo()
         for contract in self:
             existing = {c.order_line_id.id for c in contract.economic_component_ids}
             seq = 10
@@ -596,10 +599,14 @@ class ChartServiceContract(models.Model):
         self.ensure_one()
         if self.email_verified:
             return True
-        if not token or not self.email_verification_token:
+        # El token se compara leyendo por sudo: el campo es privativo del
+        # responsable y esta acción se invoca desde el portal con el contrato
+        # ya en sudo (el token llega como argumento, nunca se expone).
+        stored_token = self.sudo().email_verification_token
+        if not token or not stored_token:
             raise UserError(_("No hay una verificación pendiente para este contrato."))
         import secrets
-        if not secrets.compare_digest(token, self.email_verification_token):
+        if not secrets.compare_digest(token, stored_token):
             raise UserError(_("El enlace de verificación no es válido."))
         if (not self.email_verification_token_expiry
                 or self.email_verification_token_expiry < fields.Datetime.now()):
@@ -614,13 +621,15 @@ class ChartServiceContract(models.Model):
         return True
 
     def _invalidate_email_verification(self):
-        """Invalida la verificación si cambia el correo del destinatario."""
+        """Invalida la verificación si cambia o se VACÍA el correo destinatario."""
         for contract in self:
             if (contract.email_verified
                     and contract.email_verified_recipient
-                    and contract.partner_id.email
-                    and contract.email_verified_recipient != contract.partner_id.email):
-                contract.write({
+                    and (not contract.partner_id.email
+                         or contract.email_verified_recipient
+                         != contract.partner_id.email)):
+                contract.sudo().with_context(
+                    chart_allow_verification_invalidation=True).write({
                     'email_verified': False,
                     'email_verified_date': False,
                     'email_verified_recipient': False,
@@ -726,7 +735,10 @@ class ChartServiceContract(models.Model):
 
         Registra el ancla de facturación (fecha de activación) desde la que se
         calcularán los períodos por meses calendario. No emite facturas.
+
+        Restringido EN SERVIDOR al grupo de responsable (también por RPC).
         """
+        self._ensure_activation_manager()
         for contract in self:
             if contract.state != 'pending_activation_approval':
                 raise UserError(_(
@@ -787,13 +799,47 @@ class ChartServiceContract(models.Model):
                             'environment_checked_date': False})
         return True
 
+    def _ensure_activation_manager(self):
+        """La activación real exige el grupo de responsable EN EL SERVIDOR.
+
+        Cubre tanto ``action_activate`` como cualquier escritura directa de
+        ``state='active'`` (RPC incluido): una vista readonly o un comentario no
+        son autorización.
+        """
+        if not self.env.user.has_group(
+                'chart_service_commerce.group_chart_service_manager'):
+            raise UserError(_(
+                "Solo el responsable de servicios puede activar un contrato."))
+
+    # Campos cuya evidencia queda CONGELADA tras hold/cancel.
+    _FROZEN_AFTER_TERMINATION = (
+        'state', 'billing_anchor_date', 'activation_date', 'activated_by',
+        'email_verified', 'email_verified_date', 'email_verified_recipient',
+        'economic_terms_snapshot', 'terms_accepted', 'terms_version',
+        'terms_accepted_datetime', 'sale_order_id', 'partner_id',
+        'order_line_ids', 'dedup_key', 'company_id', 'currency_id',
+    )
+
     def write(self, vals):
         """Bloquea cambios ordinarios del ancla y del estado una vez activo.
 
         Tras la activación, el ancla de facturación y la fecha de activación no
         deben alterarse por una edición normal: cualquier corrección debe ser
         explícita (contexto chart_allow_anchor_correction) y trazada.
+
+        Además:
+        - Ninguna escritura directa pone el contrato en 'active' sin el grupo
+          de responsable (cubre RPC y escritura directa).
+        - Tras hold/cancel, el estado, la evidencia de verificación y el ancla
+          histórico quedan congelados frente a ediciones ordinarias; solo un
+          camino explícito y trazado puede tocarlos
+          (chart_allow_verification_invalidation para la invalidación de tokens
+          por cambio de correo).
         """
+        if 'state' in vals and vals['state'] == 'active':
+            to_activate = self.filtered(lambda c: c.state != 'active')
+            if to_activate:
+                self._ensure_activation_manager()
         if 'billing_anchor_date' in vals or 'activation_date' in vals:
             active = self.filtered(lambda c: c.state == 'active')
             if active and not self.env.context.get('chart_allow_anchor_correction'):
@@ -801,6 +847,24 @@ class ChartServiceContract(models.Model):
                     "No se puede modificar el ancla de facturación ni la fecha de "
                     "activación de un contrato ACTIVO por una edición ordinaria. "
                     "Cualquier corrección debe ser explícita y trazada."))
+        terminated = self.filtered(
+            lambda c: c.state in ('on_hold', 'canceled'))
+        if terminated:
+            protected = [f for f in vals if f in self._FROZEN_AFTER_TERMINATION]
+            # La invalidación de verificación por cambio de correo es un camino
+            # de SEGURIDAD y sigue operativa incluso tras hold/cancel.
+            if protected and not (
+                    protected == ['email_verified', 'email_verified_date',
+                                  'email_verified_recipient',
+                                  'email_verification_token',
+                                  'email_verification_token_expiry',
+                                  'email_verification_send_count']
+                    and self.env.context.get('chart_allow_verification_invalidation')):
+                raise UserError(_(
+                    "El contrato está en '%s': su estado, evidencia de "
+                    "verificación y ancla histórico están congelados. Usa un "
+                    "camino explícito y trazado si necesitas corregir algo.",
+                    dict(self._fields['state'].selection)[terminated[0].state]))
         return super().write(vals)
 
     # =================================================================== tasks

@@ -49,18 +49,31 @@ class WebsiteSaleChart(WebsiteSale):
             # Ya fue contratado antes (doble clic / reintento): no se duplica.
             request.session['sale_last_order_id'] = order_sudo.id
             return request.redirect('/my/soluciones')
+        # OWNERSHIP: el carrito debe pertenecer al usuario autenticado que
+        # confirma. Nunca se confirma un pedido de otro partner.
+        if (order_sudo.partner_id != request.env.user.partner_id
+                and order_sudo.partner_id.commercial_partner_id
+                != request.env.user.partner_id.commercial_partner_id):
+            return request.render('chart_service_commerce.chart_checkout_template', {
+                'order': order_sudo,
+                'error': _('Este carrito no pertenece a tu cuenta. Inicia sesión '
+                           'con la cuenta correcta.'),
+            })
         if not accept_terms:
             return request.render('chart_service_commerce.chart_checkout_template', {
                 'order': order_sudo,
                 'error': _('Debes aceptar las condiciones de contratación para continuar.'),
             })
-        if not order_sudo.chart_has_services:
+        order_sudo.chart_accept_terms()
+        # Validación EN SERVIDOR: términos, presencia de servicios y bloqueo de
+        # carrito mixto (los productos ordinarios exigen su flujo de pago).
+        try:
+            order_sudo.chart_validate_checkout_confirmation()
+        except UserError as e:
             return request.render('chart_service_commerce.chart_checkout_template', {
                 'order': order_sudo,
-                'error': _('El carrito no contiene ningún servicio contratable. '
-                           'Usa el flujo de compra normal con pago.'),
+                'error': e.args[0] if e.args else _('No se pudo confirmar la contratación.'),
             })
-        order_sudo.chart_accept_terms()
         try:
             order_sudo.action_confirm()
         except UserError:

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Pruebas de seguridad del portal: cliente A no ve el contrato de cliente B."""
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, UserError
 from odoo.tests import tagged
 
 from .common import ChartContractCommon
@@ -43,8 +43,12 @@ class TestPortalSecurity(ChartContractCommon):
         order_a.action_confirm()
         contract_a = order_a.chart_contract_ids
         user_a = partner_a.user_ids[0]
-        with self.assertRaises(AccessError):
+        # el servidor rechaza la escritura (ACL portal y/o guard de activación)
+        try:
             contract_a.with_user(user_a).write({'state': 'active'})
+            self.fail('El portal NO debe poder escribir el contrato.')
+        except (AccessError, UserError):
+            pass
 
     def _company_with_contacts(self, company_name, emails):
         """Crea una empresa con N contactos (cada uno con usuario portal)."""

@@ -269,7 +269,13 @@ class ChartProvisioningJob(models.Model):
             'progress_message': _('Preparando el entorno...'),
         })
         try:
-            self._provision_environment()
+            # Frontera transaccional: el fallo del aprovisionamiento (incluido
+            # un error SQL que deje la conexión en estado de error) se aisla en
+            # un savepoint; el rollback recupera la conexión y el registro del
+            # fallo se persiste DESPUÉS en una transacción sana. Así ``failed``
+            # permanece aunque la conexión SQL haya entrado en error.
+            with self.env.cr.savepoint():
+                self._provision_environment()
         except UserError as e:
             self._mark_failed(e.args[0] if e.args else _('No se pudo preparar el entorno.'))
             return False
@@ -309,6 +315,9 @@ class ChartProvisioningJob(models.Model):
                   '(param config %s desactivado).') % _PROVISIONING_PARAM)
         db_name = self.database_name
         self._validate_database_identifier(db_name)
+        # RECONCILIACIÓN: si una caída ocurrió DESPUÉS de crear la base (DDL en
+        # autocommit, fuera de la transacción), el recurso ya existe. Reintentar
+        # NO debe duplicarlo ni fallar: se reutiliza el recurso identificado.
         self._create_database(db_name)
         self._install_modules_in_database(db_name)
         self._create_filestore(db_name)
@@ -324,7 +333,13 @@ class ChartProvisioningJob(models.Model):
         se pone en autocommit.
         """
         if self._db_exists(db_name):
-            raise UserError(_('La base de datos %s ya existe; no se vuelve a crear.') % db_name)
+            # Reconciliación idempotente: el recurso ya existe con ESTA
+            # identidad (misma operación reintentada). No se duplica y no se
+            # considera error: se continúa con el recurso existente.
+            _logger.info(
+                'La base %s ya existe (reintento de la misma operación): se '
+                'reconcilia sin duplicar.', db_name)
+            return
         from psycopg2 import sql as psy_sql
         from odoo import sql_db
         conn = sql_db.db_connect('postgres')

@@ -7,6 +7,7 @@ la sesión ES el pedido. Al confirmar, se derivan los contratos desde las línea
 import logging
 
 from odoo import _, api, fields, models
+from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
@@ -75,6 +76,38 @@ class SaleOrder(models.Model):
                 order.write(vals)
                 changed |= order
         return changed
+
+    # ---------------------------------------------------------------- checkout
+    def chart_validate_checkout_confirmation(self):
+        """Validación EN SERVIDOR de la confirmación de contratación Chart.
+
+        - Exige carrito con líneas reales.
+        - Exige términos aceptados (consentimiento persistido).
+        - Exige presencia de servicios contratables.
+        - UN carrito MIXTO (servicios + productos ordinarios) NO se confirma
+          aquí: los productos ordinarios exigen su flujo de pago nativo. El
+          cliente debe separar el carrito; nunca se confirman productos
+          ordinarios sin pago a través de esta vía.
+        """
+        for order in self:
+            real_lines = order.order_line.filtered(
+                lambda l: l.display_type not in ('line_note', 'line_section'))
+            if not real_lines:
+                raise UserError(_("El carrito está vacío."))
+            if not order.chart_terms_accepted:
+                raise UserError(_(
+                    "Debes aceptar las condiciones de contratación para continuar."))
+            if not order.chart_has_services:
+                raise UserError(_(
+                    "El carrito no contiene ningún servicio contratable. "
+                    "Usa el flujo de compra normal con pago."))
+            if not order.chart_only_services:
+                raise UserError(_(
+                    "Este carrito mezcla servicios contratables con productos "
+                    "ordinarios. Los productos ordinarios requieren pago: "
+                    "finalízalos por el checkout normal y contrata los "
+                    "servicios en un carrito aparte."))
+        return True
 
     # ---------------------------------------------------------------- confirm
     def action_confirm(self):
