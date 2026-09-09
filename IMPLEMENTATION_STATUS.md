@@ -2848,9 +2848,25 @@ odoo -c /opt/odoo/staging/odoo-staging.conf -d chart1_test_tmp -u chart_service_
 
 ### Estado real verificado (sin secretos)
 - `chart1_staging`: sin cambios (comercial operativa). `chart1`: sin modificar.
-- Commit creado: `cde3843` («feat(provisioning): blindar job de aprovisionamiento
-  y falso ready»). Working tree limpio salvo los `.md` de auditoría/documentación
-  previos no versionados (no se tocaron ni se incluyeron).
+- Commits creados: `cde3843` (blindaje del job de aprovisionamiento), `c407f2b`
+  (migración `_sql_constraints` → `models.Constraint` en contrato y períodos) y
+  el commit de documentación. Working tree limpio salvo los `.md` de
+  auditoría/documentación previos no versionados (no se tocaron ni se incluyeron).
 - Login visual/producto piloto/contrato-job-entorno-borradores: no se pueden declarar
   cerrados por HTTP/navegador en esta entrega (dependencias externas no autorizadas).
+
+### Corrección adicional detectada por verificación (2026-09-09)
+- **Restricciones de unicidad NO instaladas**: `service_contract.py`
+  (`dedup_key_uniq`) y `service_billing_period.py` (`period_index_uniq`,
+  `period_start_uniq`, `period_dates_check`) usaban `_sql_constraints`, API ya no
+  soportada en Odoo 19: el registry solo emitía un warning y las restricciones no
+  se creaban. Comprobado en PostgreSQL (ninguna fila en `pg_constraint`).
+- **Corrección**: migradas a `models.Constraint(...)`; verificadas tras actualizar:
+  `chart_service_contract_dedup_key_uniq`,
+  `chart_service_billing_period_period_index_uniq`,
+  `chart_service_billing_period_period_start_uniq`,
+  `chart_service_billing_period_period_dates_check`.
+- **Impacto**: la idempotencia de contratación (doble clic/reintento) y la
+  unicidad de períodos facturables pasan a estar garantizadas por la base, no solo
+  por la lógica ORM. Suite re-ejecutada: 51 tests, 0 errores, exit 0.
 Ahora leo los tests de chart_service_commerce y todo el módulo chart_websales.
