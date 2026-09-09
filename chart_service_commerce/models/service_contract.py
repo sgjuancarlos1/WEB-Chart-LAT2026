@@ -266,11 +266,10 @@ class ChartServiceContract(models.Model):
     dedup_key = fields.Char(string='Clave de idempotencia', required=True, readonly=True,
                             copy=False, index=True)
 
-    _sql_constraints = [
-        ('dedup_key_uniq', 'unique(dedup_key)',
-         'Ese contrato ya fue creado con estas líneas del pedido. '
-         'No se duplica la contratación.'),
-    ]
+    _dedup_key_uniq = models.Constraint(
+        'UNIQUE(dedup_key)',
+        'Ese contrato ya fue creado con estas líneas del pedido. '
+        'No se duplica la contratación.')
 
     # =================================================================== computes
     @api.depends('state')

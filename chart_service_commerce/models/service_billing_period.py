@@ -51,14 +51,15 @@ class ChartServiceBillingPeriod(models.Model):
         selection=[('upcoming', 'Próximo'), ('open', 'Abierto'), ('closed', 'Cerrado')],
         compute='_compute_state', store=True)
 
-    _sql_constraints = [
-        ('period_index_uniq', 'unique(contract_id, index)',
-         'Ya existe ese período para este contrato (no duplicar).'),
-        ('period_start_uniq', 'unique(contract_id, date_start)',
-         'Ya existe un período que empieza en esa fecha para este contrato.'),
-        ('period_dates_check', 'check(date_end >= date_start)',
-         'El fin del período no puede ser anterior a su inicio.'),
-    ]
+    _period_index_uniq = models.Constraint(
+        'UNIQUE(contract_id, index)',
+        'Ya existe ese período para este contrato (no duplicar).')
+    _period_start_uniq = models.Constraint(
+        'UNIQUE(contract_id, date_start)',
+        'Ya existe un período que empieza en esa fecha para este contrato.')
+    _period_dates_check = models.Constraint(
+        'CHECK(date_end >= date_start)',
+        'El fin del período no puede ser anterior a su inicio.')
 
     @api.depends('index', 'date_start', 'date_end')
     def _compute_name(self):
