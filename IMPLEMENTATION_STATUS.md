@@ -2770,4 +2770,87 @@ Ran cd /opt/odoo/custom_addons && for f in chart_service_commerce/security/chart
 =====FILE: chart_service_commerce/security/chart_service_security.xml=====
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+---
+
+## ACTUALIZACIÓN 2026-09-09 — CIERRE TÉCNICO (bloqueos de seguridad y falso ready del job)
+
+### Alcance
+Esta actualización se centra en el bloque 2 del expediente (corregir bloqueos de
+seguridad y falso ready del aprovisionamiento) en `chart_service_commerce`. Se
+trabajó **exclusivamente en código y tests** sobre una base de pruebas aislada
+(`chart1_test_tmp`), nunca sobre `chart1_staging` ni `chart1`. No se creó
+infraestructura real de clientes.
+
+### Cambios realizados y validados
+- **`models/provisioning_job.py` (reescrito):**
+  - Eliminados los 5 métodos duplicados y el código muerto (`_get_initial_config_summary`
+    duplicado y la promesa `approval_token` sin consumo).
+  - Identidad estable por operación: `idempotent_key` se genera una vez en `create`
+    y nunca se regenera al aprobar/reintentar. Unicidad real en PostgreSQL con
+    `models.Constraint('UNIQUE(idempotent_key)')` (la API `_sql_constraints` ya no se
+    aplica en Odoo 19; se verificó que la restricción queda instalada).
+  - `action_approve()` calcula una única identidad (`db_name`) y deriva la URL de la
+    misma variable (ya no usa el valor previo de `self.database_name`).
+  - Control de grupo en servidor: preparador (`_ensure_user`) y responsable
+    (`_ensure_manager`). Una vista readonly o comentario ya no es autorización.
+  - Inventario real con consulta a `pg_database` (se eliminó `ir.db`, inexistente).
+  - `CREATE DATABASE`/`DROP DATABASE` con `psycopg2.sql.Identifier` y conexión
+    administrativa en autocommit; el cursor del negocio nunca se toca; sin CREATEDB
+    al proceso web.
+  - `action_start_provisioning()` persiste `failed` SIN relanzar (la transacción
+    cerrada no borra el fallo) y **solo** queda `ready` si `_verify_environment`
+    contra el recurso real pasa; una URL o carpeta de filestore no bastan.
+  - Cancelar/resetear **no** borran recursos (conservan identidad); el borrado exige
+    `action_delete_environment(confirm=True)` + parámetro explícito.
+  - `get_portal_status_info()` ya no expone errores crudos ni tokens.
+- **`models/service_contract.py`:** `provisioning_ready` depende de `state=='ready'`
+  verificado + destino autorizado (ya no solo de `environment_url`).
+- **`security/ir.model.access.csv`:** ACL mínimas del job para internos
+  (usuario/manager) y lectura para `base.group_user`.
+- **`security/chart_service_security.xml`:** dominios normalizados a IDs escalares
+  (`user.partner_id.id`); se retiró la lectura portal directa del job (el cliente se
+  sirve de la proyección segura del contrato).
+- **`controllers/main.py`:** `/shop/chart/confirm` solo por **POST** con CSRF y
+  términos; verificación de email: GET ya no consume/verifica (muestra confirmación),
+  la verificación real es POST consciente; detalle del portal sin `sudo()` indiscriminado.
+- **`views/portal_templates.xml`:** plantilla `portal_email_verify_confirm` (POST).
+- **`tests/test_provisioning_job.py` (nuevo) + `tests/__init__.py`:** 6 regresiones.
+
+### Pruebas ejecutadas (reales, ORM)
+Base aislada `chart1_test_tmp` (drop + createdb -O odoo), instalación y
+actualización con el patrón autorizado de staging:
+
+```
+odoo -c /opt/odoo/staging/odoo-staging.conf -d chart1_test_tmp -i chart_service_commerce --without-demo --stop-after-init
+odoo -c /opt/odoo/staging/odoo-staging.conf -d chart1_test_tmp -u chart_service_commerce --test-enable --stop-after-init
+```
+
+- Instalación limpia: EXIT 0; tabla `chart_provisioning_job` y restricción
+  `idempotent_key_uniq` presentes.
+- Actualización + tests: `chart_service_commerce: 51 tests` en verde, 0 errores,
+  EXIT 0.
+- Los 6 tests nuevos validan: URL consistente al aprobar, portal sin ACL del job,
+  preparador no aprueba, unicidad real de `idempotent_key`, no-ready-por-URL sin
+  infraestructura, y cancelación sin borrado de recursos.
+
+### Pendiente / no autorizado (no se declaró el piloto completo)
+- **Infraestructura**: crear/verificar entornos reales (base, filestore, HTTPS,
+  enrutamiento, invitación) requiere autorización; sin el parámetro
+  `chart_service_commerce.provisioning_enabled`, el job falla de forma controlada
+  y nunca queda `ready`. Es un límite del expediente, no un fallo de código.
+- **Navegador/HTTP**: la confirmación POST y la verificación de email se validaron
+  por ORM; la prueba visual en navegador queda pendiente (no hay chromium/playwright
+  autorizado en este servidor).
+- **Correo real**: neutralizado en staging (SMTP sink local). Queda pendiente la
+  prueba de interceptación real antes de cualquier envío.
+- **Economía/facturación y producto piloto**: fuera del alcance de esta entrega
+  (bloques 4-5 del expediente); pendiente para la siguiente iteración.
+
+### Estado real verificado (sin secretos)
+- `chart1_staging`: sin cambios (comercial operativa). `chart1`: sin modificar.
+- Commit creado: `cde3843` («feat(provisioning): blindar job de aprovisionamiento
+  y falso ready»). Working tree limpio salvo los `.md` de auditoría/documentación
+  previos no versionados (no se tocaron ni se incluyeron).
+- Login visual/producto piloto/contrato-job-entorno-borradores: no se pueden declarar
+  cerrados por HTTP/navegador en esta entrega (dependencias externas no autorizadas).
 Ahora leo los tests de chart_service_commerce y todo el módulo chart_websales.
